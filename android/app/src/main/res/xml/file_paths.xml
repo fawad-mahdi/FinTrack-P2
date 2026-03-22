@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Internal storage paths for FileProvider -->
+    <files-path name="logs" path="logs/" />
+    <files-path name="config" path="config/" />
+    <files-path name="python" path="python/" />
+    <cache-path name="cache" path="." />
+    
+    <!-- External storage for backups -->
+    <external-path name="external_files" path="." />
+</paths>

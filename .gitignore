@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Environment & secrets
+.env
+token.json
+credentials.json
+fintrack.db
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.iml
+*.jks
+*.keystore
+*.hprof
+
+# Android assets secrets
+android/app/src/main/assets/credentials.json
+
+# IDE
+.idea/
+.vscode/
+.kiro/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (generated task summaries)
+android/TASK_*.md
+android/APP_AUDIT_AND_FIX_PLAN.md
+android/INTEGRATION_TESTS_SUMMARY.md
+android/ISSUES_IDENTIFIED_AND_FIXES.md
+android/PROJECT_STRUCTURE.md
+android/PYTHON_RUNTIME_SETUP.md
+android/SERVER_STARTUP_FIXES.md
+android/TESTING_GUIDE_FIXED_VERSION.md
+android/TESTING_SUMMARY.md
+android/verify_*.sh
+
+# Python runtime (Chaquopy)
+android/app/src/main/python/__pycache__/
+android/app/src/main/python/fintrack.db

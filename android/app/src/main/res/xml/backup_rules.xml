@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive files from backup -->
+    <exclude domain="sharedpref" path="pin_prefs.xml" />
+    <exclude domain="database" path="fintrack.db" />
+    <exclude domain="file" path="config/token.json" />
+    <exclude domain="file" path="logs/" />
+</full-backup-content>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FinTrack PK</string>
+    
+    <!-- PIN Authentication -->
+    <string name="pin_setup_title">Set up your PIN</string>
+    <string name="pin_setup_subtitle">Create a 4-digit PIN to secure your financial data</string>
+    <string name="pin_login_title">Enter your PIN</string>
+    <string name="pin_login_subtitle">Enter your 4-digit PIN to access FinTrack</string>
+    <string name="pin_confirm_title">Confirm your PIN</string>
+    <string name="pin_confirm_subtitle">Enter your PIN again to confirm</string>
+    <string name="pin_error_mismatch">PINs do not match. Please try again.</string>
+    <string name="pin_error_invalid">Invalid PIN. Please try again.</string>
+    <string name="pin_locked_out">Too many failed attempts. Please wait %d seconds.</string>
+    <string name="pin_reset_title">Reset PIN</string>
+    <string name="pin_reset_message">Resetting your PIN will delete all app data including transactions, budgets, and settings. This action cannot be undone.</string>
+    <string name="pin_reset_confirm">Reset and Delete Data</string>
+    
+    <!-- Main Activity -->
+    <string name="loading">Loading FinTrack…</string>
+    <string name="server_starting">Starting server…</string>
+    <string name="server_error">Server failed to start</string>
+    <string name="server_error_message">The FinTrack server could not be started. Please check the logs for details.</string>
+    <string name="retry">Retry</string>
+    <string name="view_logs">View Logs</string>
+    
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="account_section">Account</string>
+    <string name="sync_section">Sync</string>
+    <string name="security_section">Security</string>
+    <string name="about_section">About</string>
+    <string name="advanced_section">Advanced</string>
+    
+    <string name="gmail_connection">Gmail Connection</string>
+    <string name="gmail_connected">Connected</string>
+    <string name="gmail_not_connected">Not connected</string>
+    <string name="connect_gmail">Connect Gmail</string>
+    <string name="disconnect_gmail">Disconnect Gmail</string>
+    
+    <string name="monitored_emails">Monitored Email Addresses</string>
+    <string name="monitored_emails_summary">Bank email addresses to sync from Gmail</string>
+    <string name="monitored_emails_hint">Enter email addresses, one per line</string>
+    
+    <string name="auto_sync">Auto-sync on launch</string>
+    <string name="auto_sync_summary">Automatically sync Gmail when app starts</string>
+    
+    <string name="change_pin">Change PIN</string>
+    <string name="change_pin_summary">Update your security PIN</string>
+    <string name="reset_pin">Reset PIN</string>
+    <string name="reset_pin_summary">Reset PIN and delete all data</string>
+    
+    <string name="backup_database">Backup Database</string>
+    <string name="backup_database_summary">Export your financial data</string>
+    <string name="restore_database">Restore Database</string>
+    <string name="restore_database_summary">Import previously backed up data</string>
+    
+    <string name="app_version">App Version</string>
+    <string name="python_version">Python Version</string>
+    <string name="debug_logs">Debug Logs</string>
+    <string name="export_logs">Export Logs</string>
+    
+    <!-- Network Status -->
+    <string name="network_offline">Offline - Sync disabled</string>
+    <string name="network_online">Online</string>
+    <string name="connect_gmail_banner">Connect Gmail to start syncing</string>
+    
+    <!-- Backup/Restore -->
+    <string name="backup_success">Database backed up successfully</string>
+    <string name="backup_failed">Backup failed: %s</string>
+    <string name="restore_success">Database restored successfully</string>
+    <string name="restore_failed">Restore failed: %s</string>
+    <string name="restore_confirm_title">Restore Database</string>
+    <string name="restore_confirm_message">Restoring will replace all current data. This action cannot be undone.</string>
+    
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="continue_text">Continue</string>
+    <string name="back">Back</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="error">Error</string>
+    <string name="success">Success</string>
+
+    <!-- Settings screen sections -->
+    <string name="settings_section_gmail">Gmail Connection</string>
+    <string name="settings_section_security">Security</string>
+    <string name="settings_section_about">About</string>
+
+    <!-- Settings buttons -->
+    <string name="settings_gmail_connect">Connect Gmail</string>
+    <string name="settings_gmail_reconnect">Reconnect Gmail</string>
+    <string name="settings_gmail_disconnect">Disconnect Gmail</string>
+    <string name="settings_change_pin">Change PIN</string>
+    <string name="settings_view_logs">View Logs</string>
+    <string name="settings_version">Version %1$s (%2$d)</string>
+
+    <!-- Gmail chip status -->
+    <string name="settings_gmail_status_connected">Connected</string>
+    <string name="settings_gmail_status_disconnected">Not Connected</string>
+
+    <!-- Debug screen -->
+    <string name="debug_title">Logs</string>
+    <string name="debug_tab_app">App</string>
+    <string name="debug_tab_server">Server</string>
+    <string name="debug_no_logs">No logs yet.</string>
+    <string name="debug_export">Export</string>
+    <string name="debug_export_chooser">Export Logs</string>
+    <string name="debug_refresh">Refresh</string>
+
+    <!-- PIN screen -->
+    <string name="pin_reset_button">Reset PIN &amp; Data</string>
+    <string name="pin_change_title">Enter New PIN</string>
+    <string name="pin_change_subtitle">Choose a new 4-digit PIN</string>
+    <string name="pin_error_incorrect">Incorrect PIN</string>
+
+    <!-- Gmail disconnect dialog -->
+    <string name="gmail_disconnect_title">Disconnect Gmail</string>
+    <string name="gmail_disconnect_message">Are you sure you want to disconnect Gmail? You will need to reconnect to sync bank alerts.</string>
+    <string name="gmail_disconnect_confirm">Disconnect</string>
+    <string name="gmail_disconnect_success">Gmail disconnected successfully</string>
+    <string name="gmail_disconnect_failed">Failed to disconnect Gmail</string>
+</resources>

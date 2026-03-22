@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude sensitive files from cloud backup -->
+        <exclude domain="sharedpref" path="pin_prefs.xml" />
+        <exclude domain="database" path="fintrack.db" />
+        <exclude domain="file" path="config/token.json" />
+        <exclude domain="file" path="logs/" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude sensitive files from device transfer -->
+        <exclude domain="sharedpref" path="pin_prefs.xml" />
+        <exclude domain="database" path="fintrack.db" />
+        <exclude domain="file" path="config/token.json" />
+    </device-transfer>
+</data-extraction-rules>
