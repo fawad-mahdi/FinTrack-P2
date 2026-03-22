@@ -23,8 +23,8 @@ class ServerProcessManager(private val context: Context) {
         private const val SERVER_HOST = "127.0.0.1"
         private const val SERVER_PORT = 8000
         private const val HEALTH_CHECK_INTERVAL_MS = 10000L // 10 seconds
-        private const val HEALTH_CHECK_TIMEOUT_MS = 3000L // 3 seconds
-        private const val MAX_CONSECUTIVE_FAILURES = 6  // ~60s at 10s interval — allows long sync ops
+        private const val HEALTH_CHECK_TIMEOUT_MS = 5000L // 5 seconds — increased to handle GIL contention during sync
+        private const val CRASH_DETECT_DURATION_MS = 180000L // 3 minutes continuous unhealthy = crash
         private const val MAX_RESTART_ATTEMPTS = 5
         private const val RESTART_WINDOW_MS = 60000L // 1 minute
     }
@@ -44,7 +44,7 @@ class ServerProcessManager(private val context: Context) {
     @Volatile private var isRunning = false
     private var serverStartTime: Long = 0
     private var lastError: String? = null
-    private var consecutiveFailures = 0
+    private var firstFailureTimeMs: Long = 0
     private val restartAttempts = mutableListOf<Long>()
     private var crashCallback: ServerCrashCallback? = null
 
@@ -67,6 +67,7 @@ class ServerProcessManager(private val context: Context) {
      * Start the FastAPI server process
      * @return true if server started successfully, false otherwise
      */
+    @Synchronized
     fun startServer(): Boolean {
         if (isRunning) {
             Logger.logInfo("ServerProcessManager", "Server is already running")
@@ -161,7 +162,7 @@ class ServerProcessManager(private val context: Context) {
             pythonModule = null
             serverProcess = null
             isRunning = false
-            consecutiveFailures = 0
+            firstFailureTimeMs = 0
 
             Logger.logInfo("ServerProcessManager", "Server stopped successfully")
 
@@ -282,16 +283,20 @@ class ServerProcessManager(private val context: Context) {
                     val healthy = performHealthCheck()
                     
                     if (healthy) {
-                        consecutiveFailures = 0
+                        firstFailureTimeMs = 0
                     } else {
-                        consecutiveFailures++
+                        val now = System.currentTimeMillis()
+                        if (firstFailureTimeMs == 0L) {
+                            firstFailureTimeMs = now
+                        }
+                        val unhealthyDuration = now - firstFailureTimeMs
                         Logger.logInfo(
                             "ServerProcessManager",
-                            "Health check failed (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})"
+                            "Health check failed (unhealthy for ${unhealthyDuration / 1000}s / ${CRASH_DETECT_DURATION_MS / 1000}s threshold)"
                         )
-                        
-                        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                            Logger.logError("ServerProcessManager", "Server health check failed multiple times")
+
+                        if (unhealthyDuration >= CRASH_DETECT_DURATION_MS) {
+                            Logger.logError("ServerProcessManager", "Server unhealthy for ${unhealthyDuration / 1000}s, declaring crash")
                             handleServerCrash()
                         }
                     }
@@ -333,7 +338,14 @@ class ServerProcessManager(private val context: Context) {
     private fun handleServerCrash() {
         try {
             Logger.logInfo("ServerProcessManager", "Handling server crash")
-            
+
+            // If the server is still responding, this crash came from a stale/parallel thread.
+            // Don't kill the healthy server.
+            if (performHealthCheck()) {
+                Logger.logInfo("ServerProcessManager", "Server is still healthy — crash was from a parallel/stale thread, ignoring")
+                return
+            }
+
             // Check if we've exceeded restart attempts in the time window
             val now = System.currentTimeMillis()
             restartAttempts.removeAll { it < now - RESTART_WINDOW_MS }

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from datetime import datetime, timedelta
 from datetime import date as date_type
 from typing import Optional
@@ -248,7 +249,11 @@ async def sync_gmail(request: Request):
         skipped_parse    = 0
         skipped_duplicate = 0
 
-        for email in emails:
+        for i, email in enumerate(emails):
+            # Yield GIL every 10 emails so the asyncio event loop can serve /health checks
+            if i % 10 == 0:
+                time.sleep(0)
+
             text = email["body"] or email["snippet"]
             if not text:
                 skipped_parse += 1
