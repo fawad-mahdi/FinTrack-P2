@@ -83,7 +83,8 @@ class PinAuthenticationActivity : AppCompatActivity() {
     private lateinit var pinDotsLayout: LinearLayout
     private lateinit var numberPad: GridLayout
     private lateinit var resetPinButton: MaterialButton
-    
+    private lateinit var fingerprintButton: MaterialButton
+
     // State
     private var currentPin = StringBuilder()
     private var firstPin: String? = null
@@ -128,19 +129,25 @@ class PinAuthenticationActivity : AppCompatActivity() {
         resetPinButton.setOnClickListener {
             showResetPinDialog()
         }
+        fingerprintButton = findViewById(R.id.fingerprintButton)
+        fingerprintButton.setOnClickListener {
+            android.widget.Toast.makeText(
+                this,
+                "Biometric authentication is not supported",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
     }
     
     private fun setupNumberPad() {
         numberPad.removeAllViews()
-        
-        // Create buttons 1-9, 0, and backspace
+
         val buttons = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫")
-        
-        // Calculate button size based on screen width
+
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
-        val buttonSize = (screenWidth - 128) / 3 // 3 columns with padding
-        
+        val buttonSize = (screenWidth - 128) / 3
+
         buttons.forEachIndexed { index, label ->
             val button = MaterialButton(
                 android.view.ContextThemeWrapper(this, com.google.android.material.R.style.Widget_Material3_Button_TonalButton),
@@ -148,13 +155,21 @@ class PinAuthenticationActivity : AppCompatActivity() {
                 0
             ).apply {
                 text = label
-                textSize = 24f
+                textSize = if (label == "⌫" || label.isEmpty()) 20f else 24f
                 minimumHeight = 0
                 minHeight = 0
                 minimumWidth = 0
                 minWidth = 0
                 insetTop = 0
                 insetBottom = 0
+                cornerRadius = buttonSize / 2
+                setBackgroundColor(android.graphics.Color.parseColor("#201f1f"))
+                setTextColor(
+                    if (label == "⌫" || label.isEmpty())
+                        android.graphics.Color.parseColor("#bbcabf")
+                    else
+                        android.graphics.Color.parseColor("#e5e2e1")
+                )
                 layoutParams = GridLayout.LayoutParams().apply {
                     width = buttonSize
                     height = buttonSize
@@ -174,7 +189,7 @@ class PinAuthenticationActivity : AppCompatActivity() {
             }
             numberPad.addView(button)
         }
-        
+
         Logger.logInfo("PinAuthenticationActivity", "Number pad setup complete with ${buttons.size} buttons in 4x3 grid")
     }
     

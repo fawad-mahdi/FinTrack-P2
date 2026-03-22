@@ -5,51 +5,41 @@
     android:id="@+id/pinRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:background="#131313">
 
-    <ImageView
-        android:id="@+id/appLogo"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:src="@drawable/ic_fintrack_logo"
+    <TextView
+        android:id="@+id/lockIcon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🔒"
+        android:textSize="36sp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
-
-    <TextView
-        android:id="@+id/appName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/app_name"
-        android:textAppearance="?attr/textAppearanceHeadlineMedium"
-        android:textColor="?attr/colorOnSurface"
-        app:layout_constraintTop_toBottomOf="@id/appLogo"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
+        android:layout_marginTop="72dp" />
 
     <TextView
         android:id="@+id/pinTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceHeadlineSmall"
-        android:textColor="?attr/colorOnSurface"
-        app:layout_constraintTop_toBottomOf="@id/appName"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:textColor="#4EDEA3"
+        app:layout_constraintTop_toBottomOf="@id/lockIcon"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp" />
+        android:layout_marginTop="16dp" />
 
     <TextView
         android:id="@+id/pinSubtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        android:textColor="#bbcabf"
         app:layout_constraintTop_toBottomOf="@id/pinTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="4dp" />
+        android:layout_marginTop="8dp" />
 
     <LinearLayout
         android:id="@+id/pinDotsLayout"
@@ -61,18 +51,18 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="32dp">
 
-        <ImageView android:id="@+id/pinDot1" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="8dp" />
-        <ImageView android:id="@+id/pinDot2" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="8dp" />
-        <ImageView android:id="@+id/pinDot3" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="8dp" />
-        <ImageView android:id="@+id/pinDot4" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="8dp" />
+        <ImageView android:id="@+id/pinDot1" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
+        <ImageView android:id="@+id/pinDot2" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
+        <ImageView android:id="@+id/pinDot3" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
+        <ImageView android:id="@+id/pinDot4" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/pinErrorText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:textColor="?attr/colorError"
+        android:textSize="13sp"
+        android:textColor="#ffb4ab"
         android:visibility="invisible"
         app:layout_constraintTop_toBottomOf="@id/pinDotsLayout"
         app:layout_constraintStart_toStartOf="parent"
@@ -92,16 +82,29 @@
         android:layout_marginTop="24dp" />
 
     <com.google.android.material.button.MaterialButton
+        android:id="@+id/fingerprintButton"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Use Fingerprint"
+        android:textColor="#4EDEA3"
+        app:layout_constraintTop_toBottomOf="@id/numberPad"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/resetPinButton"
         style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/pin_reset_button"
-        app:layout_constraintTop_toBottomOf="@id/numberPad"
+        android:textColor="#bbcabf"
+        app:layout_constraintTop_toBottomOf="@id/fingerprintButton"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="32dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
