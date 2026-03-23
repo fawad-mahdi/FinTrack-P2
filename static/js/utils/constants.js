@@ -50,6 +50,6 @@ export function fmtDate(iso) {
 /** Build category <option> elements, with selectedVal pre-selected */
 export function buildCategoryOptions(selectedVal = 'other') {
   return CATEGORIES.map(c =>
-    `<option value="${c}" ${c === selectedVal ? 'selected' : ''}>${CAT_LABELS[c]}</option>`
+    `<option value="${c}" ${c === selectedVal ? 'selected' : ''}>${esc(CAT_LABELS[c])}</option>`
   ).join('');
 }
