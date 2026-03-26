@@ -2,6 +2,7 @@ import os
 import json
 import base64
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -16,12 +17,26 @@ def get_gmail_service():
     creds = None
 
     if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+        except (ValueError, json.JSONDecodeError):
+            # Corrupted token file — delete it and force re-auth
+            os.remove(TOKEN_PATH)
+            creds = None
 
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except RefreshError:
+                # Refresh token revoked or expired — delete stale token and re-auth
+                if os.path.exists(TOKEN_PATH):
+                    os.remove(TOKEN_PATH)
+                creds = None
+
+        if not refreshed:
             if not os.path.exists(CREDS_PATH):
                 raise FileNotFoundError(
                     f"Missing {CREDS_PATH}. Download OAuth credentials from Google Cloud Console "

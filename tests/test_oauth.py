@@ -9,6 +9,7 @@ import base64
 import json
 import pytest
 from unittest.mock import patch, MagicMock, mock_open, call
+from google.auth.exceptions import RefreshError
 from auth_gmail import get_gmail_service, search_emails, extract_body
 
 
@@ -180,6 +181,84 @@ class TestGetGmailService:
         args = mock_build.call_args
         assert args[0][0] == "gmail"
         assert args[0][1] == "v1"
+
+    def test_refresh_error_on_creds_raises_fallback_to_flow(self):
+        """RefreshError during creds.refresh() triggers re-auth flow, not a crash."""
+        creds = _make_valid_creds(expired=True, has_refresh_token=True)
+        creds.refresh.side_effect = RefreshError("Token has been revoked")
+        new_creds = _make_valid_creds(expired=False)
+        new_creds.to_json.return_value = "{}"
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+
+        with (
+            patch("auth_gmail.os.path.exists", return_value=True),
+            patch("auth_gmail.Credentials.from_authorized_user_file", return_value=creds),
+            patch("auth_gmail.Request"),
+            patch("auth_gmail.InstalledAppFlow.from_client_secrets_file", return_value=mock_flow),
+            patch("auth_gmail.build", return_value=MagicMock()),
+            patch("builtins.open", mock_open()),
+            patch("auth_gmail.os.remove"),
+        ):
+            get_gmail_service()
+
+        mock_flow.run_local_server.assert_called_once_with(port=8090)
+
+    def test_refresh_error_without_credentials_raises_file_not_found(self):
+        """RefreshError + missing credentials.json → FileNotFoundError, not a crash."""
+        creds = _make_valid_creds(expired=True, has_refresh_token=True)
+        creds.refresh.side_effect = RefreshError("Token has been revoked")
+
+        def exists_side_effect(path):
+            return "token" in path  # token.json exists, credentials.json does not
+
+        with (
+            patch("auth_gmail.os.path.exists", side_effect=exists_side_effect),
+            patch("auth_gmail.Credentials.from_authorized_user_file", return_value=creds),
+            patch("auth_gmail.Request"),
+            patch("auth_gmail.os.remove"),
+            pytest.raises(FileNotFoundError),
+        ):
+            get_gmail_service()
+
+    def test_corrupted_token_file_falls_back_to_oauth_flow(self):
+        """Malformed token.json (bad JSON) is treated as missing — triggers re-auth."""
+        new_creds = _make_valid_creds(expired=False)
+        new_creds.to_json.return_value = "{}"
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+
+        with (
+            patch("auth_gmail.os.path.exists", return_value=True),
+            patch(
+                "auth_gmail.Credentials.from_authorized_user_file",
+                side_effect=ValueError("Invalid token file"),
+            ),
+            patch("auth_gmail.InstalledAppFlow.from_client_secrets_file", return_value=mock_flow),
+            patch("auth_gmail.build", return_value=MagicMock()),
+            patch("builtins.open", mock_open()),
+            patch("auth_gmail.os.remove"),
+        ):
+            get_gmail_service()
+
+        mock_flow.run_local_server.assert_called_once_with(port=8090)
+
+    def test_corrupted_token_without_credentials_raises_file_not_found(self):
+        """Corrupted token.json + missing credentials.json → FileNotFoundError."""
+
+        def exists_side_effect(path):
+            return "token" in path
+
+        with (
+            patch("auth_gmail.os.path.exists", side_effect=exists_side_effect),
+            patch(
+                "auth_gmail.Credentials.from_authorized_user_file",
+                side_effect=ValueError("Invalid token file"),
+            ),
+            patch("auth_gmail.os.remove"),
+            pytest.raises(FileNotFoundError),
+        ):
+            get_gmail_service()
 
 
 # ── search_emails() ───────────────────────────────────────────────────────────
