@@ -1,7 +1,9 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from datetime import date as date_type
+from functools import partial
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -110,8 +112,10 @@ async def sync_gmail(request: Request):
         if delta_days > 30:
             max_results = 500
 
+    loop = asyncio.get_running_loop()
+
     try:
-        service = get_gmail_service()
+        service = await loop.run_in_executor(None, get_gmail_service)
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
@@ -126,7 +130,9 @@ async def sync_gmail(request: Request):
         query    += f" before:{before_dt.isoformat().replace('-', '/')}"
 
     try:
-        emails = search_emails(service, query, max_results=max_results)
+        emails = await loop.run_in_executor(
+            None, partial(search_emails, service, query, max_results)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gmail search failed: {e}")
 

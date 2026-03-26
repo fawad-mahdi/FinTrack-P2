@@ -17,6 +17,7 @@ async function request(path, options = {}) {
   try {
     res = await fetch(BASE + path, options);
   } catch (e) {
+    if (e.name === 'AbortError') throw new ApiError(0, 'timeout');
     // Network offline / server not running
     throw new ApiError(0, e.message);
   }
@@ -26,11 +27,12 @@ async function request(path, options = {}) {
   throw new ApiError(res.status, detail);
 }
 
-function json(method, path, body) {
+function json(method, path, body, extraOptions = {}) {
   return request(path, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    ...extraOptions,
   });
 }
 
@@ -38,8 +40,12 @@ function json(method, path, body) {
 export const authenticate     = (pin)          => json('POST', '/api/auth', { pin });
 
 // ── Sync ──────────────────────────────────────────────────
-export const syncGmail        = (dateFrom, dateTo) =>
-  json('POST', '/api/sync', { date_from: dateFrom, date_to: dateTo });
+export const syncGmail = (dateFrom, dateTo) => {
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 min
+  return json('POST', '/api/sync', { date_from: dateFrom, date_to: dateTo }, { signal: controller.signal })
+    .finally(() => clearTimeout(timeoutId));
+};
 export const getSyncStatus    = ()             => request('/api/sync/status');
 
 // ── Transactions ──────────────────────────────────────────

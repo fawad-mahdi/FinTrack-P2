@@ -1,12 +1,14 @@
 import asyncio
 import os
-import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from datetime import date as date_type
+from functools import partial
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from dotenv import load_dotenv
 
 from database import (
     init_db,
@@ -17,137 +19,32 @@ from database import (
     get_budgets, upsert_budget, suggest_budgets,
     get_monthly_report,
 )
-from auth_gmail import (
-    get_gmail_service, search_emails, OAuthRequiredError,
-    build_oauth_url, save_pending_exchange, get_pending_exchange,
-    clear_pending_exchange,
-)
+from auth_gmail import get_gmail_service, search_emails
 from parsers import parse_email, BANK_CONFIG
 
-# Android environment paths
-# On Android, FINTRACK_APP_DIR points to filesDir where static assets are extracted.
-# On desktop fallback, use the script directory.
+# On Android, FINTRACK_APP_DIR is injected into os.environ by ServerProcessManager
+# and points to filesDir (where static/index.html is extracted). On desktop it's unset.
 BASE_DIR = os.environ.get("FINTRACK_APP_DIR") or os.path.dirname(os.path.abspath(__file__))
-CONFIG_DIR = os.environ.get('FINTRACK_CONFIG_DIR', BASE_DIR)
-LOGS_DIR = os.environ.get('FINTRACK_LOGS_DIR', BASE_DIR)
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-# Default PIN for Android (will be managed by Android layer)
-PIN  = os.environ.get("PIN",  "1234")
-HOST = os.environ.get("HOST", "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8000"))
+PIN  = os.getenv("PIN",  "1234")
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "8000"))
 
 _authenticated  = set()
 _MAX_SYNC_DAYS  = 90
 
 
-# FastAPI 0.88.0 (Chaquopy/Android) does NOT support the lifespan parameter
-# (added in 0.93.0). Use on_event("startup") instead.
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
     print(f"\n  FinTrack PK running at http://{HOST}:{PORT}")
     print(f"  PIN: {PIN}\n")
-
-# Mount static files directory (index.html is extracted here by FinTrackApplication)
-_static_dir = os.path.join(BASE_DIR, "static")
-if os.path.isdir(_static_dir):
-    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
-
-# Health check endpoint for Android ServerProcessManager
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for process monitoring."""
-    return {"status": "ok", "service": "fintrack-pk"}
+    yield
 
 
-# ─── OAUTH (loopback redirect for Android) ──────────────────────
-
-@app.get("/api/oauth/url")
-async def oauth_start():
-    """Return the Google OAuth authorization URL.
-
-    The redirect_uri points back to this server's /oauth/callback route
-    so the token exchange happens automatically.
-    """
-    redirect_uri = f"http://127.0.0.1:{PORT}/oauth/callback"
-    try:
-        auth_url, state = build_oauth_url(redirect_uri)
-        return {"url": auth_url, "state": state}
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/oauth/callback")
-async def oauth_callback(request: Request):
-    """Google redirects here after user authorizes.
-
-    Exchanges the auth code for tokens, saves token.json,
-    and shows a success page.
-    """
-    code = request.query_params.get("code")
-    state = request.query_params.get("state")
-    error = request.query_params.get("error")
-
-    if error:
-        return HTMLResponse(
-            f"<h2>OAuth Error</h2><p>{error}</p>"
-            "<p>Close this tab and try again.</p>",
-            status_code=400,
-        )
-
-    if not code or not state:
-        return HTMLResponse(
-            "<h2>Missing parameters</h2><p>Close this tab and try again.</p>",
-            status_code=400,
-        )
-
-    try:
-        save_pending_exchange(code, state)
-    except Exception as e:
-        import traceback
-        err_detail = traceback.format_exc()
-        print(f"OAuth save pending error: {err_detail}")
-        return HTMLResponse(
-            f"<h2>Authorization failed</h2><p>{e}</p>"
-            "<p>Close this tab and try again.</p>",
-            status_code=500,
-        )
-
-    # Tell user to return to app — Kotlin side will complete the exchange
-    return HTMLResponse("""<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FinTrack PK</title>
-<style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;
-min-height:80vh;margin:0;background:#f5f5f5;color:#333}
-.card{background:#fff;padding:40px;border-radius:12px;text-align:center;
-box-shadow:0 2px 8px rgba(0,0,0,0.1)}
-.ok{font-size:48px;margin-bottom:16px}h2{margin:0 0 8px}</style>
-</head><body><div class="card">
-<div class="ok">✓</div>
-<h2>Gmail Authorized</h2>
-<p>Return to FinTrack PK to complete setup.</p>
-<p>Tap <b>Sync Gmail</b> to import your transactions.</p>
-</div></body></html>""")
-
-
-@app.get("/api/oauth/pending")
-async def oauth_pending():
-    """Return pending OAuth exchange data for Kotlin-side token exchange."""
-    data = get_pending_exchange()
-    if data is None:
-        return {"pending": False}
-    return {"pending": True, **data}
-
-
-@app.delete("/api/oauth/pending")
-async def oauth_clear_pending():
-    """Clear the pending OAuth exchange after Kotlin completes it."""
-    clear_pending_exchange()
-    return {"ok": True}
+app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
 # ─── PIN AUTH ────────────────────────────────────────────────────
@@ -172,11 +69,7 @@ def check_auth():
 async def sync_gmail(request: Request):
     """
     Sync Gmail bank alerts and import transactions.
-
-    The heavy Gmail API work runs in a background thread so the async
-    event loop stays free to serve /health checks (prevents false crash
-    detection by ServerProcessManager during long syncs).
-
+    
     US-15 Duplicate Prevention:
     - Tracks skipped_duplicate count separately in response
     - Duplicates are detected by gmail_id UNIQUE constraint
@@ -219,81 +112,67 @@ async def sync_gmail(request: Request):
         if delta_days > 30:
             max_results = 500
 
-    # --- Run the blocking Gmail work in a thread ---
-    def _do_sync():
-        try:
-            service = get_gmail_service()
-        except OAuthRequiredError:
-            return {"_error": "oauth_required"}
-        except FileNotFoundError as e:
-            return {"_error": str(e)}
-        except Exception as e:
-            return {"_error": f"Gmail auth failed: {e}"}
+    loop = asyncio.get_running_loop()
 
-        senders = [config["sender"] for config in BANK_CONFIG.values()]
-        query   = " OR ".join(f"from:{s}" for s in senders)
-        if date_from_str:
-            query += f" after:{date_from_str.replace('-', '/')}"
-        if date_to_str:
-            before_dt = date_type.fromisoformat(date_to_str) + timedelta(days=1)
-            query    += f" before:{before_dt.isoformat().replace('-', '/')}"
+    try:
+        service = await loop.run_in_executor(None, get_gmail_service)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gmail auth failed: {e}")
 
-        try:
-            emails = search_emails(service, query, max_results=max_results)
-        except Exception as e:
-            return {"_error": f"Gmail search failed: {e}"}
+    senders = [config["sender"] for config in BANK_CONFIG.values()]
+    query   = " OR ".join(f"from:{s}" for s in senders)
+    if date_from_str:
+        query += f" after:{date_from_str.replace('-', '/')}"
+    if date_to_str:
+        before_dt = date_type.fromisoformat(date_to_str) + timedelta(days=1)
+        query    += f" before:{before_dt.isoformat().replace('-', '/')}"
 
-        total            = len(emails)
-        parsed_ok        = 0
-        pending          = 0
-        skipped_parse    = 0
-        skipped_duplicate = 0
+    try:
+        emails = await loop.run_in_executor(
+            None, partial(search_emails, service, query, max_results)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gmail search failed: {e}")
 
-        for i, email in enumerate(emails):
-            # Yield GIL every 10 emails so the asyncio event loop can serve /health checks
-            if i % 10 == 0:
-                time.sleep(0)
+    total            = len(emails)
+    parsed_ok        = 0
+    pending          = 0
+    skipped_parse    = 0
+    skipped_duplicate = 0
 
-            text = email["body"] or email["snippet"]
-            if not text:
-                skipped_parse += 1
-                continue
+    for email in emails:
+        text = email["body"] or email["snippet"]
+        if not text:
+            skipped_parse += 1
+            continue
 
-            result = parse_email(text, email["sender"], email["gmail_id"], email.get("date", ""))
-            if result is None:
-                skipped_parse += 1
-                continue
+        result = parse_email(text, email["sender"], email["gmail_id"], email.get("date", ""))
+        if result is None:
+            skipped_parse += 1
+            continue
 
-            inserted = insert_transaction(result)
-            if inserted:
-                if result["confidence"] == "high":
-                    parsed_ok += 1
-                else:
-                    pending += 1
+        inserted = insert_transaction(result)
+        if inserted:
+            if result["confidence"] == "high":
+                parsed_ok += 1
             else:
-                skipped_duplicate += 1
+                pending += 1
+        else:
+            skipped_duplicate += 1
 
-        log_sync(total, parsed_ok, pending)
+    log_sync(total, parsed_ok, pending)
 
-        return {
-            "emails_found":     total,
-            "parsed_ok":        parsed_ok,
-            "pending_review":   pending,
-            "skipped_parse":    skipped_parse,
-            "skipped_duplicate": skipped_duplicate,
-            "date_from":        date_from_str,
-            "date_to":          date_to_str,
-        }
-
-    result = await asyncio.to_thread(_do_sync)
-
-    if "_error" in result:
-        err = result["_error"]
-        if err == "oauth_required":
-            raise HTTPException(status_code=401, detail="oauth_required")
-        raise HTTPException(status_code=500, detail=err)
-
-    return result
+    return {
+        "emails_found":     total,
+        "parsed_ok":        parsed_ok,
+        "pending_review":   pending,
+        "skipped_parse":    skipped_parse,
+        "skipped_duplicate": skipped_duplicate,
+        "date_from":        date_from_str,
+        "date_to":          date_to_str,
+    }
 
 
 # ─── TRANSACTIONS ────────────────────────────────────────────────
@@ -526,13 +405,10 @@ async def monthly_report(month: str = None):
 
 @app.get("/")
 async def index():
-    index_path = os.path.join(BASE_DIR, "static", "index.html")
-    if os.path.exists(index_path):
-        with open(index_path) as f:
-            return HTMLResponse(f.read())
-    return {"status": "ok", "message": "FinTrack PK API Server", "version": "1.0.0"}
+    with open(os.path.join(BASE_DIR, "static", "index.html")) as f:
+        return HTMLResponse(f.read())
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host=HOST, port=PORT, reload=False)
+    uvicorn.run("server:app", host=HOST, port=PORT, reload=True)

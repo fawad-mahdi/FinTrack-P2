@@ -201,12 +201,21 @@ async function _doSync() {
     return;
   }
 
-  const btn = container.querySelector('#syncNowBtn');
+  const btn      = container.querySelector('#syncNowBtn');
   const feedback = container.querySelector('#syncFeedback');
 
-  btn.disabled = true;
-  btn.innerHTML = `<span class="btn-spinner"></span> Syncing…`;
+  btn.disabled   = true;
   feedback.innerHTML = '';
+
+  // Elapsed-time counter so the user can see progress during long syncs
+  let elapsed = 0;
+  const _updateBtn = () => {
+    const m = Math.floor(elapsed / 60), s = elapsed % 60;
+    const t = m > 0 ? `${m}m ${s}s` : `${s}s`;
+    btn.innerHTML = `<span class="btn-spinner"></span> Syncing… ${t}`;
+  };
+  _updateBtn();
+  const timer = setInterval(() => { elapsed++; _updateBtn(); }, 1000);
 
   const dateFrom = _isoDay(startDate);
   const dateTo   = endDate ? _isoDay(endDate) : _isoDay(new Date());
@@ -223,28 +232,34 @@ async function _doSync() {
           <div class="sync-result-item"><div class="sri-label">Skipped (Unreadable)</div><div class="sri-value">${d.skipped_parse}</div></div>
         </div>
       </div>`;
-    // Refresh last sync time
     _loadLastSync();
   } catch (e) {
-    let msg = e.detail || 'Sync failed. Please try again.';
+    let msg      = e.detail || 'Sync failed. Please try again.';
     let showRetry = true;
-    if (e.status === 500 && e.detail && e.detail.includes('Gmail auth failed')) {
-      msg = 'Gmail not connected — please authenticate on desktop first.';
+
+    if (e.status === 0 && e.detail === 'timeout') {
+      // Request exceeded 5 minutes — server is still processing (not crashed)
+      msg = 'Sync is taking longer than expected. Your transactions are still importing in the background — check back in a minute.';
       showRetry = false;
-    } else if (e.status === 500 && e.detail && e.detail.includes('Gmail search failed')) {
-      msg = 'Gmail search failed. Tap to retry.';
     } else if (e.status === 0) {
       msg = 'No connection. Check your network.';
       showRetry = false;
+    } else if (e.status === 500 && e.detail?.includes('Gmail auth failed')) {
+      msg = 'Gmail not connected — please authenticate on desktop first.';
+      showRetry = false;
+    } else if (e.status === 500 && e.detail?.includes('Gmail search failed')) {
+      msg = 'Gmail search failed. Tap to retry.';
     }
+
     feedback.innerHTML = `
       <div class="sync-error">
         <p>${msg}</p>
         ${showRetry ? '<button id="retryBtn">Retry</button>' : ''}
       </div>`;
     container.querySelector('#retryBtn')?.addEventListener('click', _doSync);
+  } finally {
+    clearInterval(timer);
+    btn.disabled = false;
+    btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:20px">sync</span> Sync Now`;
   }
-
-  btn.disabled = false;
-  btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:20px">sync</span> Sync Now`;
 }
