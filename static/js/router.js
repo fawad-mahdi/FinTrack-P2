@@ -60,12 +60,16 @@ function navigate(viewId) {
   containers[viewId].style.display = 'block';
 
   // Lazy init or re-init
-  if (!initialized[viewId]) {
-    initialized[viewId] = true;
-    VIEWS[viewId].init(containers[viewId]);
-  } else if (VIEWS[viewId].init) {
-    // Re-call init to refresh data; init() handles the initialized check internally
-    VIEWS[viewId].init(containers[viewId]);
+  try {
+    if (!initialized[viewId]) {
+      initialized[viewId] = true;
+      VIEWS[viewId].init(containers[viewId]);
+    } else if (VIEWS[viewId].init) {
+      VIEWS[viewId].init(containers[viewId]);
+    }
+  } catch (err) {
+    console.error(`[router] ${viewId}.init() failed:`, err);
+    containers[viewId].innerHTML = `<div style="color:#ffb4ab;padding:24px;font-family:monospace;white-space:pre-wrap;"><strong>Error in ${viewId} view:</strong>\n${err.message}\n\n${err.stack}</div>`;
   }
 }
 

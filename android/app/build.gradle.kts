@@ -37,6 +37,14 @@ android {
         debug {
             isMinifyEnabled = false
         }
+        create("dev") {
+            isMinifyEnabled = false
+            isDebuggable = true
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk.dev"
+            resValue("string", "app_name", "FinTrack Dev")
+        }
     }
 
     compileOptions {
