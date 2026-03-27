@@ -38,8 +38,7 @@ _MAX_SYNC_DAYS  = 90
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    print(f"\n  FinTrack PK running at http://{HOST}:{PORT}")
-    print(f"  PIN: {PIN}\n")
+    print(f"\n  FinTrack PK running at http://{HOST}:{PORT}\n")
     yield
 
 
@@ -210,9 +209,14 @@ async def create_transaction(request: Request):
         if field not in body:
             raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
 
+    try:
+        amount = float(body["amount"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="amount must be a number")
+
     tx = {
         "gmail_id":  None,
-        "amount":    float(body["amount"]),
+        "amount":    amount,
         "tx_type":   body["tx_type"],
         "merchant":  body.get("merchant", "").strip(),
         "bank":      body["bank"],
@@ -411,4 +415,5 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host=HOST, port=PORT, reload=True)
+    dev_mode = os.getenv("FINTRACK_DEV", "").lower() in ("1", "true")
+    uvicorn.run("server:app", host=HOST, port=PORT, reload=dev_mode)
