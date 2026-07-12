@@ -4,17 +4,13 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 from datetime import date as date_type
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 
-# Android environment paths — resolved lazily so env vars injected after
-# module import (by Chaquopy/ServerProcessManager) are picked up.
-def _get_db_path():
-    db_dir = os.environ.get('FINTRACK_DB_DIR', os.path.dirname(__file__))
-    return os.path.join(db_dir, "fintrack.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "fintrack.db")
 
 
 def get_db():
-    conn = sqlite3.connect(_get_db_path())
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -150,6 +146,12 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (category, month)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions (tx_date);
+        CREATE INDEX IF NOT EXISTS idx_tx_status   ON transactions (status);
+        CREATE INDEX IF NOT EXISTS idx_tx_bank      ON transactions (bank);
+        CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions (category);
+        CREATE INDEX IF NOT EXISTS idx_tx_type     ON transactions (tx_type);
     """)
     conn.commit()
     _migrate(conn)
@@ -275,27 +277,28 @@ def update_transaction(tx_id: int, updates: dict):
         conn.close()
         return
 
-    set_clause = ", ".join(f"{k}=?" for k in fields)
-    values = list(fields.values()) + [tx_id]
-    conn.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
-    conn.commit()
+    try:
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        values = list(fields.values()) + [tx_id]
+        conn.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
+        conn.commit()
 
-    # If category was changed, learn merchant → category mapping
-    if "category" in fields:
-        merchant_row = conn.execute(
-            "SELECT merchant FROM transactions WHERE id=?", (tx_id,)
-        ).fetchone()
-        if merchant_row and merchant_row["merchant"]:
-            conn.execute(
-                """INSERT INTO merchant_categories (merchant, category, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(merchant) DO UPDATE SET
-                     category=excluded.category, updated_at=excluded.updated_at""",
-                (merchant_row["merchant"], fields["category"], datetime.now().isoformat()),
-            )
-            conn.commit()
-
-    conn.close()
+        # If category was changed, learn merchant → category mapping
+        if "category" in fields:
+            merchant_row = conn.execute(
+                "SELECT merchant FROM transactions WHERE id=?", (tx_id,)
+            ).fetchone()
+            if merchant_row and merchant_row["merchant"]:
+                conn.execute(
+                    """INSERT INTO merchant_categories (merchant, category, updated_at)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(merchant) DO UPDATE SET
+                         category=excluded.category, updated_at=excluded.updated_at""",
+                    (merchant_row["merchant"], fields["category"], datetime.now().isoformat()),
+                )
+                conn.commit()
+    finally:
+        conn.close()
 
 
 def delete_transaction(tx_id: int):
@@ -356,7 +359,7 @@ def get_category_summary(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     search: Optional[str] = None,
-) -> List[Dict]:
+) -> List[dict]:
     conn = get_db()
 
     filter_conds, filter_params = _build_filters(
@@ -422,7 +425,7 @@ def get_learned_category(merchant: str) -> Optional[str]:
     return row["category"] if row else None
 
 
-def get_category_mappings() -> List[Dict]:
+def get_category_mappings() -> List[dict]:
     conn = get_db()
     rows = conn.execute(
         "SELECT merchant, category, updated_at FROM merchant_categories ORDER BY merchant"
@@ -542,7 +545,7 @@ def upsert_budget(category: str, amount: float, month: str):
     conn.close()
 
 
-def suggest_budgets(month: str) -> List[Dict]:
+def suggest_budgets(month: str) -> List[dict]:
     """Suggest budget amounts from the previous month's actual spending."""
     year, mo = int(month[:4]), int(month[5:7])
     prev_mo   = mo - 1 if mo > 1 else 12

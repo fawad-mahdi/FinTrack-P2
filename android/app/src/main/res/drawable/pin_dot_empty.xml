@@ -3,8 +3,8 @@
     android:shape="oval">
     <stroke
         android:width="2dp"
-        android:color="@color/md_theme_outline" />
+        android:color="#3c4a42" />
     <size
-        android:width="20dp"
-        android:height="20dp" />
+        android:width="14dp"
+        android:height="14dp" />
 </shape>

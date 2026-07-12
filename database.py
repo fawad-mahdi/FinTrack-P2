@@ -146,6 +146,12 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (category, month)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions (tx_date);
+        CREATE INDEX IF NOT EXISTS idx_tx_status   ON transactions (status);
+        CREATE INDEX IF NOT EXISTS idx_tx_bank      ON transactions (bank);
+        CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions (category);
+        CREATE INDEX IF NOT EXISTS idx_tx_type     ON transactions (tx_type);
     """)
     conn.commit()
     _migrate(conn)
@@ -271,27 +277,28 @@ def update_transaction(tx_id: int, updates: dict):
         conn.close()
         return
 
-    set_clause = ", ".join(f"{k}=?" for k in fields)
-    values = list(fields.values()) + [tx_id]
-    conn.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
-    conn.commit()
+    try:
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        values = list(fields.values()) + [tx_id]
+        conn.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
+        conn.commit()
 
-    # If category was changed, learn merchant → category mapping
-    if "category" in fields:
-        merchant_row = conn.execute(
-            "SELECT merchant FROM transactions WHERE id=?", (tx_id,)
-        ).fetchone()
-        if merchant_row and merchant_row["merchant"]:
-            conn.execute(
-                """INSERT INTO merchant_categories (merchant, category, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(merchant) DO UPDATE SET
-                     category=excluded.category, updated_at=excluded.updated_at""",
-                (merchant_row["merchant"], fields["category"], datetime.now().isoformat()),
-            )
-            conn.commit()
-
-    conn.close()
+        # If category was changed, learn merchant → category mapping
+        if "category" in fields:
+            merchant_row = conn.execute(
+                "SELECT merchant FROM transactions WHERE id=?", (tx_id,)
+            ).fetchone()
+            if merchant_row and merchant_row["merchant"]:
+                conn.execute(
+                    """INSERT INTO merchant_categories (merchant, category, updated_at)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(merchant) DO UPDATE SET
+                         category=excluded.category, updated_at=excluded.updated_at""",
+                    (merchant_row["merchant"], fields["category"], datetime.now().isoformat()),
+                )
+                conn.commit()
+    finally:
+        conn.close()
 
 
 def delete_transaction(tx_id: int):
