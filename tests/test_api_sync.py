@@ -8,6 +8,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import date, timedelta
 
+from auth_gmail import OAuthRequiredError
+
 
 def _make_gmail_email(gmail_id: str, sender: str, body: str, subject: str = "Alert") -> dict:
     """Helper: build a mock email dict as returned by search_emails."""
@@ -50,6 +52,48 @@ class TestSyncStatus:
         data = resp.json()
         # Should now return a sync_log row, not the sentinel
         assert "message" not in data
+
+
+# ── Gmail OAuth: /api/sync auth-required + POST /api/auth/gmail ───────────────
+
+class TestGmailAuthFlow:
+    async def test_sync_returns_428_when_gmail_not_connected(self, authed_client):
+        """No/expired token → 428 so the frontend can launch the OAuth flow
+        (previously this blocked the request inside run_local_server)."""
+        with patch("server.get_gmail_service",
+                   side_effect=OAuthRequiredError("Gmail not connected")):
+            resp = await authed_client.post("/api/sync", json={})
+
+        assert resp.status_code == 428
+        assert "Gmail not connected" in resp.json()["detail"]
+
+    async def test_auth_gmail_returns_consent_url(self, authed_client):
+        url = "https://accounts.google.com/o/oauth2/auth?client_id=x"
+        with patch("server.start_auth_flow", return_value=url):
+            resp = await authed_client.post("/api/auth/gmail")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"auth_url": url}
+
+    async def test_auth_gmail_requires_pin_auth(self, client):
+        resp = await client.post("/api/auth/gmail")
+        assert resp.status_code == 401
+
+    async def test_auth_gmail_missing_credentials_returns_500(self, authed_client):
+        with patch("server.start_auth_flow",
+                   side_effect=FileNotFoundError("Missing credentials.json")):
+            resp = await authed_client.post("/api/auth/gmail")
+
+        assert resp.status_code == 500
+        assert "credentials.json" in resp.json()["detail"]
+
+    async def test_auth_gmail_port_conflict_returns_500(self, authed_client):
+        with patch("server.start_auth_flow",
+                   side_effect=OSError("[Errno 48] Address already in use")):
+            resp = await authed_client.post("/api/auth/gmail")
+
+        assert resp.status_code == 500
+        assert "Could not start Gmail sign-in" in resp.json()["detail"]
 
 
 # ── POST /api/sync ────────────────────────────────────────────────────────────
@@ -161,13 +205,15 @@ class TestSyncEndpoint:
             patch("server.get_gmail_service", return_value=mock_service),
             patch("server.search_emails", return_value=[]),
         ):
+            date_from = (date.today() - timedelta(days=20)).isoformat()
+            date_to = (date.today() - timedelta(days=5)).isoformat()
             resp = await authed_client.post(
-                "/api/sync", json={"date_from": "2026-03-01", "date_to": "2026-03-26"}
+                "/api/sync", json={"date_from": date_from, "date_to": date_to}
             )
 
         data = resp.json()
-        assert data["date_from"] == "2026-03-01"
-        assert data["date_to"] == "2026-03-26"
+        assert data["date_from"] == date_from
+        assert data["date_to"] == date_to
 
     async def test_sync_works_with_no_body(self, authed_client):
         """Sync with empty/missing JSON body should not crash."""

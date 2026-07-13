@@ -4,6 +4,26 @@
 
 const BASE = '';
 
+// On Android the native shell loads the app as /?boot=<token>; the token
+// must be echoed back as X-FinTrack-Token on every API call (the local
+// server rejects /api/* requests without it). On desktop there is no
+// token and no header is sent.
+const API_TOKEN = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const boot = params.get('boot');
+    if (boot) {
+      sessionStorage.setItem('fintrack_api_token', boot);
+      params.delete('boot');
+      const qs = params.toString();
+      history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+    }
+    return sessionStorage.getItem('fintrack_api_token') || '';
+  } catch {
+    return '';
+  }
+})();
+
 export class ApiError extends Error {
   constructor(status, detail) {
     super(detail);
@@ -13,9 +33,11 @@ export class ApiError extends Error {
 }
 
 async function request(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (API_TOKEN) headers['X-FinTrack-Token'] = API_TOKEN;
   let res;
   try {
-    res = await fetch(BASE + path, options);
+    res = await fetch(BASE + path, { ...options, headers });
   } catch (e) {
     if (e.name === 'AbortError') throw new ApiError(0, 'timeout');
     // Network offline / server not running
@@ -38,6 +60,7 @@ function json(method, path, body, extraOptions = {}) {
 
 // ── Auth ──────────────────────────────────────────────────
 export const authenticate     = (pin)          => json('POST', '/api/auth', { pin });
+export const startGmailAuth   = ()             => json('POST', '/api/auth/gmail');
 
 // ── Sync ──────────────────────────────────────────────────
 export const syncGmail = (dateFrom, dateTo) => {
@@ -71,3 +94,13 @@ export const suggestBudgets   = (month)        => json('POST',   '/api/budgets/s
 
 // ── Report ────────────────────────────────────────────────
 export const getMonthlyReport = (month)        => request(`/api/report?month=${month}`);
+
+// ── Banks ─────────────────────────────────────────────────
+export const getBanks         = ()             => request('/api/banks');
+export const addBank          = (bank, address)=> json('POST', '/api/banks', { bank, address });
+export const deleteBank       = (id)           => request(`/api/banks/${id}`, { method: 'DELETE' });
+
+// ── Profile ───────────────────────────────────────────────
+export const getProfile       = ()             => request('/api/profile');
+export const updateProfile    = (name)         => json('PUT',  '/api/profile', { name });
+export const changePin        = (currentPin, newPin) => json('POST', '/api/profile/pin', { current_pin: currentPin, new_pin: newPin });

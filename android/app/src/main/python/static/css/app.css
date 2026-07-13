@@ -357,7 +357,7 @@
   .cat-chip { display:inline-block; padding:2px 8px; background:var(--surface2); border-radius:4px; font-size:11px; font-weight:600; }
 
   /* ── US-20: FLOATING ACTION BUTTON ── */
-  .fab { position:fixed; bottom:28px; right:28px; width:52px; height:52px; border-radius:50%; background:var(--green); color:#000; font-size:28px; font-weight:300; border:none; cursor:pointer; box-shadow:0 4px 24px rgba(34,197,94,0.4); z-index:900; display:flex; align-items:center; justify-content:center; transition:transform 0.2s, box-shadow 0.2s; }
+  .fab { position:fixed; bottom:calc(96px + env(safe-area-inset-bottom)); right:28px; width:52px; height:52px; border-radius:50%; background:var(--green); color:#000; font-size:28px; font-weight:300; border:none; cursor:pointer; box-shadow:0 4px 24px rgba(34,197,94,0.4); z-index:900; display:flex; align-items:center; justify-content:center; transition:transform 0.2s, box-shadow 0.2s; }
   .fab:active { transform:scale(0.92); box-shadow:0 2px 16px rgba(34,197,94,0.3); }
   @media (hover: hover) and (pointer: fine) {
     .fab:hover { transform:scale(1.08); box-shadow:0 6px 28px rgba(34,197,94,0.55); }
@@ -488,7 +488,7 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
-  .fab { bottom: calc(28px + env(safe-area-inset-bottom)); right: calc(20px + env(safe-area-inset-right)); }
+  .fab { bottom: calc(96px + env(safe-area-inset-bottom)); right: calc(20px + env(safe-area-inset-right)); }
   .quick-add { padding-bottom: calc(26px + env(safe-area-inset-bottom)); }
 
   /* ── Collapsible filter panel ── */
@@ -611,7 +611,7 @@
     .qa-footer .btn { width: 100%; min-height: 48px; font-size: 15px; }
 
     /* FAB — adjust for mobile */
-    .fab { width: 56px; height: 56px; font-size: 30px; bottom: calc(20px + env(safe-area-inset-bottom)); right: 16px; }
+    .fab { width: 56px; height: 56px; font-size: 30px; bottom: calc(100px + env(safe-area-inset-bottom)); right: 16px; }
 
     /* Report cards — 2x2 grid */
     .report-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -676,6 +676,7 @@
 .sync-status-email { font-size: 12px; color: #bbcabf; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sync-status-meta { display: flex; align-items: center; gap: 10px; }
 .sync-status-badge { background: rgba(78,222,163,0.15); color: var(--primary); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px; letter-spacing: 0.4px; }
+.sync-status-badge.off { background: rgba(245,158,11,0.15); color: var(--amber); }
 .sync-status-time { font-size: 11px; color: #bbcabf; }
 
 .sync-section-label { font-size: 12px; font-weight: 600; color: #bbcabf; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
@@ -693,6 +694,10 @@
   color: #e5e2e1; font-size: 13px; font-family: 'Manrope', sans-serif;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: background 0.12s, color 0.12s;
+  /* Let the 1fr grid tracks collapse; without this the aspect-ratio sets an
+     auto min-width that forces each column to its square size, overflowing
+     the calendar off-screen on narrow (phone) viewports. */
+  min-width: 0;
 }
 .cal-day:hover:not(.disabled):not(.selected):not(.in-range) { background: #2A2A2A; }
 .cal-day.disabled { color: #3c4a42; cursor: not-allowed; }
@@ -749,6 +754,29 @@
 .sync-error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 16px 18px; margin-top: 16px; }
 .sync-error p { font-size: 13px; color: #ffb4ab; margin-bottom: 10px; }
 .sync-error button { background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; color: #ffb4ab; font-size: 12px; font-family: 'Manrope', sans-serif; padding: 6px 14px; cursor: pointer; }
+
+/* Gmail connect prompt (OAuth) */
+.sync-connect { background: rgba(78,222,163,0.08); border: 1px solid rgba(78,222,163,0.25); border-radius: 12px; padding: 16px 18px; margin-top: 16px; }
+.sync-connect p { font-size: 13px; color: #bbcabf; margin-bottom: 10px; }
+.sync-connect a { display: inline-block; background: rgba(78,222,163,0.15); border: 1px solid rgba(78,222,163,0.4); border-radius: 8px; color: var(--primary); font-size: 12px; font-weight: 700; text-decoration: none; padding: 6px 14px; }
+
+/* My Banks */
+.my-banks-card { background: #1C1B1B; border-radius: 16px; padding: 20px; }
+.my-banks-list { font-size: 13px; color: #bbcabf; }
+.bank-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.bank-chip { background: #2A2A2A; color: #bbcabf; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 10px; }
+.bank-chip.unverified { opacity: 0.55; }
+.bank-empty { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.bank-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid #2A2A2A; }
+.bank-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bank-row-info strong { font-size: 13px; color: #e5e2e1; }
+.bank-row-info span { font-size: 12px; color: #bbcabf; overflow: hidden; text-overflow: ellipsis; }
+.bank-del-btn { background: none; border: none; color: #ffb4ab; font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.my-banks-form { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.my-banks-form input { background: #2A2A2A; border: 1px solid transparent; border-radius: 10px; color: #e5e2e1; font-size: 13px; font-family: 'Manrope', sans-serif; padding: 10px 12px; outline: none; }
+.my-banks-form input:focus { border-color: var(--primary); }
+.my-banks-add-btn { background: rgba(78,222,163,0.15); border: none; border-radius: 10px; color: var(--primary); font-size: 13px; font-weight: 700; font-family: 'Manrope', sans-serif; padding: 10px; cursor: pointer; }
+.my-banks-error { font-size: 12px; color: #ffb4ab; margin-top: 8px; min-height: 14px; }
 
 /* ── BOTTOM NAVIGATION ── */
 .bottom-nav {
@@ -2656,4 +2684,113 @@
 .mr-rule-del .material-symbols-outlined {
   font-size: 18px;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 18;
+}
+
+/* ── PROFILE VIEW ── */
+.pf-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.pf-avatar {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #000;
+  background: var(--primary);
+}
+.pf-identity { min-width: 0; }
+.pf-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pf-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 4px;
+}
+.pf-icon-btn .material-symbols-outlined { font-size: 18px; }
+.pf-icon-btn:active { color: var(--primary); }
+.pf-email {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-email .material-symbols-outlined { font-size: 16px; }
+.pf-email-off { color: var(--muted); }
+.pf-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.pf-section-title {
+  font-size: 11px;
+  color: var(--dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.pf-label {
+  display: block;
+  font-size: 12px;
+  color: var(--dim);
+  margin: 10px 0 4px;
+}
+.pf-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  letter-spacing: 2px;
+}
+.pf-input:focus { outline: none; border-color: var(--primary); }
+.pf-msg {
+  display: none;
+  font-size: 12px;
+  color: var(--red);
+  margin: 8px 0 4px;
+}
+.pf-msg.ok { color: var(--green); }
+.pf-msg.visible { display: block; }
+.pf-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
 }
