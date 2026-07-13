@@ -4,12 +4,18 @@ import * as dashboard from './views/dashboard.js';
 import * as activity  from './views/activity.js';
 import * as budget    from './views/budget.js';
 import * as syncView  from './views/sync.js';
+import * as profile   from './views/profile.js';
+import * as quickAdd  from './components/quickAdd.js';
+
+// Views that show the shared floating "+" (cash quick-add) button.
+const FAB_VIEWS = new Set(['dashboard', 'activity']);
 
 const VIEWS = {
   dashboard: dashboard,
   activity:  activity,
   sync:      syncView,
   budget:    budget,
+  profile:   profile,
 };
 
 const DEFAULT_VIEW = 'dashboard';
@@ -58,6 +64,7 @@ function navigate(viewId) {
   }
 
   containers[viewId].style.display = 'block';
+  quickAdd.setVisible(FAB_VIEWS.has(viewId));
 
   // Lazy init or re-init
   try {
@@ -78,6 +85,9 @@ function navigate(viewId) {
 authInit(() => {
   // Auth passed — show the app shell
   document.getElementById('appShell').style.display = 'flex';
+
+  // Mount the shared cash quick-add FAB once (visibility toggled per view)
+  quickAdd.mount();
 
   // Wire up bottom nav buttons
   document.querySelectorAll('.bottom-nav-btn').forEach(btn => {

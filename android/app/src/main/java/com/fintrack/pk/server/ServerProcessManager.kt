@@ -27,6 +27,15 @@ class ServerProcessManager(private val context: Context) {
         private const val CRASH_DETECT_DURATION_MS = 180000L // 3 minutes continuous unhealthy = crash
         private const val MAX_RESTART_ATTEMPTS = 5
         private const val RESTART_WINDOW_MS = 60000L // 1 minute
+
+        /**
+         * Per-process token required on all API calls to the local server.
+         * The server binds to 127.0.0.1, but any app on the device can reach
+         * loopback ports — this proves the caller is our own WebView/app.
+         * Injected into the Python server via FINTRACK_API_TOKEN and handed
+         * to the WebView through a one-time ?boot= query parameter.
+         */
+        val apiToken: String = java.util.UUID.randomUUID().toString()
     }
     
     /**
@@ -98,7 +107,8 @@ class ServerProcessManager(private val context: Context) {
                         "FINTRACK_APP_DIR" to (context.filesDir.absolutePath),
                         "FINTRACK_CONFIG_DIR" to (File(context.filesDir, "config").absolutePath),
                         "FINTRACK_LOGS_DIR" to (File(context.filesDir, "logs").absolutePath),
-                        "FINTRACK_DB_DIR" to File(context.filesDir, "databases").absolutePath
+                        "FINTRACK_DB_DIR" to File(context.filesDir, "databases").absolutePath,
+                        "FINTRACK_API_TOKEN" to apiToken
                     )
                     injectPythonEnvironment(python, envDirs)
                     pythonModule?.callAttr("start_server", SERVER_HOST, SERVER_PORT)

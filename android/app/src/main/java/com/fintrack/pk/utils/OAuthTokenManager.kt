@@ -33,11 +33,15 @@ class OAuthTokenManager(private val context: Context) {
     private val gson = Gson()
     private val configDir = File(context.filesDir, Constants.CONFIG_DIR)
     private val tokenFile = File(configDir, Constants.TOKEN_FILE)
-    private val credentialsFile = File(configDir, Constants.CREDENTIALS_FILE)
 
     /**
      * Check if a valid OAuth token exists.
-     * 
+     *
+     * Also invalidates tokens issued by a different OAuth client (e.g. an
+     * install upgraded from a build that shipped the old desktop-type client):
+     * their refresh tokens fail with invalid_client, so we delete the token
+     * and let the caller prompt a clean re-connect.
+     *
      * @return true if token.json exists and contains a token, false otherwise
      */
     fun hasToken(): Boolean {
@@ -46,10 +50,20 @@ class OAuthTokenManager(private val context: Context) {
                 Logger.logInfo("OAuthTokenManager", "token.json does not exist")
                 return false
             }
-            
+
             val tokenData = loadTokenData()
             val hasToken = tokenData != null && tokenData.token.isNotEmpty()
-            
+
+            val expectedClientId = Constants.OAUTH_CLIENT_ID
+            if (hasToken && expectedClientId.isNotEmpty() && tokenData!!.clientId != expectedClientId) {
+                Logger.logInfo(
+                    "OAuthTokenManager",
+                    "Token was issued by a different OAuth client — deleting; user must reconnect Gmail"
+                )
+                deleteToken()
+                return false
+            }
+
             Logger.logInfo("OAuthTokenManager", "Token exists: $hasToken")
             hasToken
         } catch (e: Exception) {
@@ -116,25 +130,20 @@ class OAuthTokenManager(private val context: Context) {
                 Logger.logError("OAuthTokenManager", "No refresh token available")
                 return@withContext false
             }
-            
-            // Load credentials
-            val credentials = loadCredentials() ?: run {
-                Logger.logError("OAuthTokenManager", "Failed to load credentials for refresh")
-                return@withContext false
-            }
-            
+
             Logger.logInfo("OAuthTokenManager", "Creating token refresh request")
-            
-            // Create AuthorizationServiceConfiguration
+
+            // Android-type OAuth client: no client secret, endpoints are constants.
+            // Refresh with the client that issued the token.
             val serviceConfig = AuthorizationServiceConfiguration(
-                android.net.Uri.parse(credentials.authUri),
-                android.net.Uri.parse(credentials.tokenUri)
+                android.net.Uri.parse(Constants.OAUTH_AUTH_URI),
+                android.net.Uri.parse(Constants.OAUTH_TOKEN_URI)
             )
-            
+
             // Create TokenRequest for refresh
             val tokenRequest = TokenRequest.Builder(
                 serviceConfig,
-                credentials.clientId
+                tokenData.clientId
             )
                 .setRefreshToken(tokenData.refreshToken)
                 .setGrantType(net.openid.appauth.GrantTypeValues.REFRESH_TOKEN)
@@ -291,27 +300,6 @@ class OAuthTokenManager(private val context: Context) {
     }
 
     /**
-     * Load OAuth credentials from credentials.json.
-     * 
-     * @return OAuthCredentials if successful, null otherwise
-     */
-    fun loadCredentials(): OAuthCredentials? {
-        return try {
-            if (!credentialsFile.exists()) {
-                Logger.logError("OAuthTokenManager", "credentials.json not found")
-                return null
-            }
-            
-            val json = credentialsFile.readText()
-            val wrapper = gson.fromJson(json, CredentialsWrapper::class.java)
-            wrapper.installed
-        } catch (e: Exception) {
-            Logger.logError("OAuthTokenManager", "Failed to load credentials: ${e.message}")
-            null
-        }
-    }
-
-    /**
      * Delete token.json (for disconnect/logout).
      * 
      * @return true if successful or file doesn't exist, false on error
@@ -334,18 +322,16 @@ class OAuthTokenManager(private val context: Context) {
 
     /**
      * Save tokens from initial OAuth authorization flow.
-     * 
+     *
      * This method is used by OAuthCallbackActivity to save tokens after
-     * the initial authorization code exchange.
-     * 
+     * the initial authorization code exchange. The Android-type OAuth
+     * client has no secret: client_secret is persisted as "" only to keep
+     * the token.json shape the Python backend expects.
+     *
      * @param tokenResponse TokenResponse from AppAuth
-     * @param credentials OAuthCredentials for client_id and client_secret
      * @return true if successful, false otherwise
      */
-    fun saveInitialTokens(
-        tokenResponse: net.openid.appauth.TokenResponse,
-        credentials: OAuthCredentials
-    ): Boolean {
+    fun saveInitialTokens(tokenResponse: net.openid.appauth.TokenResponse): Boolean {
         return try {
             // Calculate expiry timestamp in ISO 8601 format
             val expiryTime = if (tokenResponse.accessTokenExpirationTime != null) {
@@ -354,26 +340,26 @@ class OAuthTokenManager(private val context: Context) {
                 // Default to 1 hour from now if not provided
                 Instant.now().plusSeconds(3600).toString()
             }
-            
+
             // Create token data in Python backend format
             val tokenData = TokenData(
                 token = tokenResponse.accessToken ?: "",
                 refreshToken = tokenResponse.refreshToken ?: "",
-                tokenUri = credentials.tokenUri,
-                clientId = credentials.clientId,
-                clientSecret = credentials.clientSecret,
-                scopes = listOf("https://www.googleapis.com/auth/gmail.readonly"),
+                tokenUri = Constants.OAUTH_TOKEN_URI,
+                clientId = Constants.OAUTH_CLIENT_ID,
+                clientSecret = "",
+                scopes = listOf(Constants.OAUTH_SCOPE),
                 expiry = expiryTime
             )
-            
+
             // Save token data
             val saved = saveTokenData(tokenData)
-            
+
             if (saved) {
                 Logger.logInfo("OAuthTokenManager", "Initial tokens saved successfully")
                 Logger.logInfo("OAuthTokenManager", "Token expiry: $expiryTime")
             }
-            
+
             saved
         } catch (e: Exception) {
             Logger.logError("OAuthTokenManager", "Failed to save initial tokens: ${e.message}")
@@ -383,14 +369,14 @@ class OAuthTokenManager(private val context: Context) {
 
     /**
      * Data class for token.json format (Python backend compatible).
-     * 
+     *
      * Format matches what google-auth library expects:
      * {
      *   "token": "access_token",
      *   "refresh_token": "refresh_token",
      *   "token_uri": "https://oauth2.googleapis.com/token",
      *   "client_id": "...",
-     *   "client_secret": "...",
+     *   "client_secret": "",
      *   "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
      *   "expiry": "2024-01-15T10:30:00Z"
      * }
@@ -404,38 +390,8 @@ class OAuthTokenManager(private val context: Context) {
         @SerializedName("client_id")
         val clientId: String,
         @SerializedName("client_secret")
-        val clientSecret: String,
+        val clientSecret: String = "",
         val scopes: List<String>,
         val expiry: String
-    )
-
-    /**
-     * Data classes for parsing credentials.json
-     */
-    data class CredentialsWrapper(
-        val installed: OAuthCredentials
-    )
-
-    data class OAuthCredentials(
-        @SerializedName("client_id")
-        val clientId: String,
-        
-        @SerializedName("project_id")
-        val projectId: String,
-        
-        @SerializedName("auth_uri")
-        val authUri: String,
-        
-        @SerializedName("token_uri")
-        val tokenUri: String,
-        
-        @SerializedName("auth_provider_x509_cert_url")
-        val authProviderCertUrl: String,
-        
-        @SerializedName("client_secret")
-        val clientSecret: String,
-        
-        @SerializedName("redirect_uris")
-        val redirectUris: List<String>
     )
 }

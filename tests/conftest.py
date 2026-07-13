@@ -9,8 +9,10 @@ from httpx import AsyncClient, ASGITransport
 def reset_auth_state():
     """Clear PIN auth between every test so tests are fully isolated."""
     server_module._authenticated.clear()
+    server_module._failed_attempts.clear()
     yield
     server_module._authenticated.clear()
+    server_module._failed_attempts.clear()
 
 
 @pytest.fixture

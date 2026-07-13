@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.fintrack.pk.FinTrackApplication
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Manages Python runtime extraction and initialization
@@ -57,9 +56,6 @@ class PythonRuntimeManager(private val context: Context) {
 
             // Extract configuration files
             extractConfigFiles()
-
-            // Extract web frontend
-            extractWebFrontend()
 
             // Mark extraction as complete
             prefs.edit()
@@ -115,18 +111,14 @@ class PythonRuntimeManager(private val context: Context) {
         try {
             val configDir = context.filesDir.resolve("config")
 
-            // Always overwrite credentials.json from assets to pick up updates on app upgrade.
-            // The real credentials.json is bundled as an asset (not the .example placeholder).
+            // No credentials.json ships with the app anymore: the OAuth client
+            // is Android-type (client ID only, injected via BuildConfig) and
+            // has no secret. Remove any stale copy left by older versions —
+            // it contained the burned desktop-type client secret.
             val credentialsFile = configDir.resolve("credentials.json")
-            try {
-                copyAssetToFile("credentials.json", credentialsFile)
-                Logger.logInfo("PythonRuntimeManager", "Copied credentials.json to config directory")
-            } catch (e: Exception) {
-                // Fallback to example if real credentials not bundled
-                if (!credentialsFile.exists()) {
-                    copyAssetToFile("credentials.json.example", credentialsFile)
-                    Logger.logInfo("PythonRuntimeManager", "Copied credentials.json.example (fallback)")
-                }
+            if (credentialsFile.exists()) {
+                val deleted = credentialsFile.delete()
+                Logger.logInfo("PythonRuntimeManager", "Removed legacy credentials.json: $deleted")
             }
 
         } catch (e: Exception) {
@@ -135,36 +127,11 @@ class PythonRuntimeManager(private val context: Context) {
         }
     }
 
-    /**
-     * Extract web frontend files from assets
-     */
-    private fun extractWebFrontend() {
-        try {
-            val webDir = context.filesDir.resolve("web")
-            val indexFile = webDir.resolve("index.html")
-
-            // Always update index.html to ensure latest version
-            copyAssetToFile("index.html", indexFile)
-            Logger.logInfo("PythonRuntimeManager", "Extracted index.html to web directory")
-
-        } catch (e: Exception) {
-            Logger.logError("PythonRuntimeManager", "Error extracting web frontend", e)
-            throw e
-        }
-    }
-
-    /**
-     * Copy a file from assets to a destination file
-     * @param assetPath Path to the asset file
-     * @param destFile Destination file
-     */
-    private fun copyAssetToFile(assetPath: String, destFile: File) {
-        context.assets.open(assetPath).use { input ->
-            FileOutputStream(destFile).use { output ->
-                input.copyTo(output)
-            }
-        }
-    }
+    // Web frontend extraction removed: the frontend (index.html + static/)
+    // ships inside the Chaquopy python source set and is served by the
+    // FastAPI server from the module directory. The old code copied a
+    // non-existent "index.html" APK asset and made every fresh install fail
+    // with "Failed to extract Python runtime".
 
     /**
      * Verify that the Python runtime extraction was successful
@@ -191,20 +158,11 @@ class PythonRuntimeManager(private val context: Context) {
                 }
             }
 
-            // Check web frontend exists
-            val indexFile = context.filesDir.resolve("web/index.html")
-            if (!indexFile.exists()) {
-                Logger.logError("PythonRuntimeManager", "Web frontend file missing: index.html")
-                return false
-            }
+            // The web frontend is served by the FastAPI server from the
+            // Chaquopy python directory — nothing to verify in filesDir.
 
-            // Check config directory has credentials file (even if it's the example)
-            val configDir = context.filesDir.resolve("config")
-            val credentialsFile = configDir.resolve("credentials.json")
-            if (!credentialsFile.exists()) {
-                Logger.logError("PythonRuntimeManager", "Configuration file missing: credentials.json")
-                return false
-            }
+            // credentials.json is no longer required: the OAuth client ID is
+            // compiled into the app (BuildConfig) and there is no client secret.
 
             Logger.logInfo("PythonRuntimeManager", "Python runtime verification successful")
             return true

@@ -1,13 +1,16 @@
 import asyncio
+import hashlib
+import hmac
 import os
-from contextlib import asynccontextmanager
+import re
+import time
 from datetime import datetime, timedelta
 from datetime import date as date_type
 from functools import partial
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 
 from database import (
@@ -18,14 +21,23 @@ from database import (
     get_category_mappings, upsert_category_mapping, delete_category_mapping,
     get_budgets, upsert_budget, suggest_budgets,
     get_monthly_report,
+    get_setting, set_setting,
+    get_user_banks, add_user_bank, delete_user_bank,
 )
-from auth_gmail import get_gmail_service, search_emails
-from parsers import parse_email, BANK_CONFIG
+from auth_gmail import get_gmail_service, search_emails, get_account_email, OAuthRequiredError
+from bank_registry import BANK_REGISTRY, entries_from_user_banks, find_bank, get_query_domains
+from generic_parser import SKIP
+from parsers import parse_email
 
 # On Android, FINTRACK_APP_DIR is injected into os.environ by ServerProcessManager
-# and points to filesDir (where static/index.html is extracted). On desktop it's unset.
+# and points to filesDir. On desktop it's unset. Used for the optional .env only.
 BASE_DIR = os.environ.get("FINTRACK_APP_DIR") or os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# The web frontend (index.html + static/) always ships alongside this file:
+# repo root on desktop, the Chaquopy module dir on Android. It is NOT extracted
+# into filesDir, so serve it from the module directory, not FINTRACK_APP_DIR.
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 PIN  = os.getenv("PIN",  "1234")
 HOST = os.getenv("HOST", "127.0.0.1")
@@ -34,32 +46,139 @@ PORT = int(os.getenv("PORT", "8000"))
 _authenticated  = set()
 _MAX_SYNC_DAYS  = 90
 
+# Per-IP brute-force throttle for /api/auth.
+# Maps client IP → (failed_count, lockout_until_epoch).
+_failed_attempts: dict = {}
+_MAX_PIN_ATTEMPTS = 5
+_PIN_LOCKOUT_SEC  = 60
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+
+# NOTE: FastAPI 0.88 (Android/Chaquopy pin) does not support the lifespan=
+# constructor argument — it is silently ignored, so init_db() would never
+# run. Use the legacy @app.on_event hook instead (desktop server.py uses
+# lifespan on FastAPI 0.115).
+app = FastAPI()
+
+
+@app.on_event("startup")
+async def _startup():
     init_db()
     print(f"\n  FinTrack PK running at http://{HOST}:{PORT}\n")
-    yield
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-app = FastAPI(lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# ─── LOCAL API TOKEN (Android) ───────────────────────────────────
+# On Android the server binds to 127.0.0.1, but any app on the device can
+# reach loopback ports. ServerProcessManager generates a per-process token
+# (FINTRACK_API_TOKEN) and hands it to the WebView via a one-time ?boot=
+# query param; api.js sends it back as X-FinTrack-Token on every API call.
+# On desktop the env var is unset and this middleware is a no-op.
+
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    api_token = os.environ.get("FINTRACK_API_TOKEN", "")
+    if api_token and request.url.path.startswith("/api/"):
+        supplied = request.headers.get("x-fintrack-token", "")
+        if not hmac.compare_digest(supplied, api_token):
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid API token"})
+    return await call_next(request)
+
+
+# ─── HEALTH CHECK ────────────────────────────────────────────────
+# ServerProcessManager polls this to decide the server is up. It must
+# stay un-prefixed (not /api/) so the token middleware never blocks it.
+
+@app.get("/health")
+async def health_check():
+    """Liveness probe for the Android ServerProcessManager."""
+    return {"status": "ok"}
 
 
 # ─── PIN AUTH ────────────────────────────────────────────────────
 
 @app.post("/api/auth")
 async def authenticate(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+
+    fails, locked_until = _failed_attempts.get(ip, (0, 0.0))
+    if now < locked_until:
+        wait = int(locked_until - now)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {wait}s.",
+        )
+
     body = await request.json()
-    if body.get("pin") == PIN:
+    submitted = str(body.get("pin") or "")
+    if _pin_matches(submitted):
+        _failed_attempts.pop(ip, None)
         _authenticated.add("user")
         return {"ok": True}
+
+    fails += 1
+    if fails >= _MAX_PIN_ATTEMPTS:
+        _failed_attempts[ip] = (0, now + _PIN_LOCKOUT_SEC)
+    else:
+        _failed_attempts[ip] = (fails, 0.0)
     raise HTTPException(status_code=401, detail="Wrong PIN")
 
 
 def check_auth():
     if "user" not in _authenticated:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _pin_matches(submitted: str) -> bool:
+    """Check a submitted PIN against the user-set PIN (settings table),
+    falling back to the env-var default when none has been set."""
+    stored_hash = get_setting("pin_hash")
+    if stored_hash:
+        submitted_hash = hashlib.sha256(submitted.encode()).hexdigest()
+        return hmac.compare_digest(submitted_hash, stored_hash)
+    return hmac.compare_digest(submitted, PIN)
+
+
+# ─── PROFILE ─────────────────────────────────────────────────────
+
+@app.get("/api/profile")
+async def get_profile():
+    check_auth()
+    email = get_setting("gmail_email")
+    if not email:
+        loop = asyncio.get_running_loop()
+        email = await loop.run_in_executor(None, get_account_email)
+        if email:
+            set_setting("gmail_email", email)
+    return {
+        "name": get_setting("profile_name") or "User",
+        "email": email,
+    }
+
+
+@app.put("/api/profile")
+async def update_profile(request: Request):
+    check_auth()
+    body = await request.json()
+    name = str(body.get("name") or "").strip()
+    if not name or len(name) > 50:
+        raise HTTPException(status_code=400, detail="Name must be 1-50 characters")
+    set_setting("profile_name", name)
+    return {"ok": True}
+
+
+@app.post("/api/profile/pin")
+async def change_pin(request: Request):
+    check_auth()
+    body = await request.json()
+    current = str(body.get("current_pin") or "")
+    new = str(body.get("new_pin") or "")
+    if not _pin_matches(current):
+        raise HTTPException(status_code=401, detail="Current PIN is incorrect")
+    if not (new.isdigit() and len(new) == 4):
+        raise HTTPException(status_code=400, detail="New PIN must be exactly 4 digits")
+    set_setting("pin_hash", hashlib.sha256(new.encode()).hexdigest())
+    return {"ok": True}
 
 
 # ─── GMAIL SYNC (US-14, US-15) ───────────────────────────────────
@@ -115,13 +234,16 @@ async def sync_gmail(request: Request):
 
     try:
         service = await loop.run_in_executor(None, get_gmail_service)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except OAuthRequiredError as e:
+        # 428 Precondition Required — frontend triggers the native OAuth flow
+        # (AndroidBridge.requestSync()) and retries the sync once connected.
+        raise HTTPException(status_code=428, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gmail auth failed: {e}")
 
-    senders = [config["sender"] for config in BANK_CONFIG.values()]
-    query   = " OR ".join(f"from:{s}" for s in senders)
+    user_entries = entries_from_user_banks(get_user_banks())
+
+    query = "from:(" + " OR ".join(get_query_domains(user_entries)) + ")"
     if date_from_str:
         query += f" after:{date_from_str.replace('-', '/')}"
     if date_to_str:
@@ -138,6 +260,7 @@ async def sync_gmail(request: Request):
     total            = len(emails)
     parsed_ok        = 0
     pending          = 0
+    unparsed         = 0
     skipped_parse    = 0
     skipped_duplicate = 0
 
@@ -147,8 +270,10 @@ async def sync_gmail(request: Request):
             skipped_parse += 1
             continue
 
-        result = parse_email(text, email["sender"], email["gmail_id"], email.get("date", ""))
-        if result is None:
+        result = parse_email(text, email["sender"], email["gmail_id"], email.get("date", ""), extra_entries=user_entries)
+        if result is None or result is SKIP:
+            # Unregistered sender, or a recognised non-transaction email
+            # (OTP / login / promo) — nothing to import.
             skipped_parse += 1
             continue
 
@@ -157,7 +282,11 @@ async def sync_gmail(request: Request):
             if result["confidence"] == "high":
                 parsed_ok += 1
             else:
+                # medium/low/failed all land in Pending Review;
+                # 'failed' rows are stubs with only raw_text to correct.
                 pending += 1
+                if result["confidence"] == "failed":
+                    unparsed += 1
         else:
             skipped_duplicate += 1
 
@@ -167,6 +296,7 @@ async def sync_gmail(request: Request):
         "emails_found":     total,
         "parsed_ok":        parsed_ok,
         "pending_review":   pending,
+        "unparsed":         unparsed,
         "skipped_parse":    skipped_parse,
         "skipped_duplicate": skipped_duplicate,
         "date_from":        date_from_str,
@@ -357,6 +487,66 @@ async def remove_mapping(merchant: str):
     return {"ok": True}
 
 
+# ─── USER BANKS ──────────────────────────────────────────────────
+
+# Free-mail providers can never be a bank's alert sender; adding one would
+# flood the sync query with personal mail.
+_BLOCKED_BANK_DOMAINS = {
+    "gmail.com", "googlemail.com", "yahoo.com", "outlook.com",
+    "hotmail.com", "live.com", "icloud.com", "proton.me", "protonmail.com",
+}
+
+# A bare domain (bank.com) or a full sender address (alerts@bank.com).
+_ADDRESS_SHAPE_RE = re.compile(r"^(?:[a-z0-9._%+-]+@)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$")
+
+
+@app.get("/api/banks")
+async def list_banks():
+    check_auth()
+    return {
+        "builtin": BANK_REGISTRY,
+        "custom": get_user_banks(),
+    }
+
+
+@app.post("/api/banks")
+async def add_bank(request: Request):
+    check_auth()
+    body    = await request.json()
+    bank    = str(body.get("bank") or "").strip()
+    address = str(body.get("address") or "").strip().lower()
+
+    if not bank or not address:
+        raise HTTPException(status_code=400, detail="bank and address are required")
+    if len(bank) > 50:
+        raise HTTPException(status_code=400, detail="Bank name must be 50 characters or fewer")
+    if not _ADDRESS_SHAPE_RE.match(address):
+        raise HTTPException(status_code=400, detail="Enter a sender address (alerts@bank.com) or domain (bank.com)")
+
+    domain = address.rsplit("@", 1)[1] if "@" in address else address
+    if domain in _BLOCKED_BANK_DOMAINS:
+        raise HTTPException(status_code=400, detail=f"{domain} is a personal email provider, not a bank sender")
+
+    # Reject anything already covered by the built-in registry or an
+    # existing custom entry (probe as a full address so domain rules match).
+    probe = address if "@" in address else "probe@" + address
+    existing = find_bank(probe, entries_from_user_banks(get_user_banks()))
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Already covered by {existing['bank']}")
+
+    row = add_user_bank(bank, address)
+    if row is None:
+        raise HTTPException(status_code=400, detail="This address has already been added")
+    return row
+
+
+@app.delete("/api/banks/{bank_id}")
+async def remove_bank(bank_id: int):
+    check_auth()
+    delete_user_bank(bank_id)
+    return {"ok": True}
+
+
 # ─── BUDGETS (US-21) ─────────────────────────────────────────────
 
 @app.get("/api/budgets")
@@ -409,7 +599,7 @@ async def monthly_report(month: str = None):
 
 @app.get("/")
 async def index():
-    with open(os.path.join(BASE_DIR, "static", "index.html")) as f:
+    with open(os.path.join(STATIC_DIR, "index.html")) as f:
         return HTMLResponse(f.read())
 
 

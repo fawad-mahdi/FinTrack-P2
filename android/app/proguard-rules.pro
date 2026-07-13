@@ -35,6 +35,10 @@
 -keep class com.fintrack.pk.data.** { *; }
 -keep class com.fintrack.pk.models.** { *; }
 
+# Gson-reflected OAuth token model (token.json read/write) — without this,
+# minified release builds silently break token persistence.
+-keep class com.fintrack.pk.utils.OAuthTokenManager$* { *; }
+
 # Keep WebView JavaScript interface
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;

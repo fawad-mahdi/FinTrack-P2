@@ -1,6 +1,6 @@
 // static/js/views/activity.js
 import {
-  getTransactions, createTransaction, createCashTransaction,
+  getTransactions, createTransaction,
   patchTransaction, deleteTransaction
 } from '../api.js';
 import {
@@ -20,7 +20,6 @@ let filterAmountMax = '';
 let filterDateFrom  = '';
 let filterDateTo    = '';
 let filterDebounce  = null;
-let qaCategory      = 'other';
 let container;
 let initialized     = false;
 
@@ -105,66 +104,6 @@ function _render() {
       </div>
 
     </div><!-- /.thv -->
-
-    <!-- FAB -->
-    <button class="fab" id="fab" title="Log cash expense">+</button>
-
-    <!-- Quick-add backdrop + sheet -->
-    <div class="qa-backdrop" id="qaBackdrop"></div>
-    <div class="quick-add ace-sheet" id="quickAdd">
-
-      <!-- Drag handle -->
-      <div class="ace-drag-handle"></div>
-
-      <!-- Header -->
-      <div class="ace-header">
-        <button class="ace-close-btn" id="qaCloseBtn">
-          <span class="material-symbols-outlined">close</span>
-        </button>
-        <span class="ace-heading">Add Cash Entry</span>
-        <div class="ace-header-spacer"></div>
-      </div>
-
-      <!-- Amount zone -->
-      <div class="ace-amount-zone">
-        <span class="ace-currency-label">PKR</span>
-        <input type="number" id="qaAmount" class="ace-amount-input" placeholder="0" min="0" inputmode="decimal">
-      </div>
-
-      <!-- Quick presets -->
-      <div class="ace-presets-row">
-        ${[500,1000,2500,5000,10000].map(v => `<button class="qa-preset-btn ace-preset" data-amount="${v}">₨${v>=1000?(v/1000)+'k':v}</button>`).join('')}
-      </div>
-
-      <!-- Category -->
-      <div class="ace-section-label">Category</div>
-      <div class="ace-cat-grid">
-        ${CATEGORIES.map(c => `
-          <button class="qa-cat-btn ace-cat-chip${c==='other'?' active':''}" data-cat="${c}">
-            <div class="ace-cat-circle" style="background:${CAT_COLORS[c]}22">
-              <span class="qa-cat-icon ace-cat-emoji">${CAT_EMOJI[c]}</span>
-            </div>
-            <span class="ace-cat-label">${CAT_LABELS[c]}</span>
-          </button>`).join('')}
-      </div>
-
-      <!-- Footer: note + date + save -->
-      <div class="ace-footer">
-        <div class="ace-note-field">
-          <span class="material-symbols-outlined ace-note-icon">edit_note</span>
-          <input type="text" id="qaNote" class="ace-note-input" placeholder="Note (e.g. chai, auto-rickshaw)">
-        </div>
-        <div class="ace-date-strip">
-          <input type="date" id="qaDate" class="ace-date-input">
-          <button class="ace-chip-btn" id="qaYesterdayBtn">Yesterday</button>
-        </div>
-        <button class="ace-submit-btn" id="qaSaveBtn">
-          <span>Add Entry</span>
-          <span class="material-symbols-outlined">arrow_forward</span>
-        </button>
-      </div>
-
-    </div>
 
     <!-- Add Transaction sheet backdrop -->
     <div class="thv-sheet-backdrop" id="addBackdrop"></div>
@@ -252,33 +191,9 @@ function _bindEvents() {
   container.querySelector('#fDateTo').addEventListener('change', _applyFilters);
   container.querySelector('#clearFiltersBtn').addEventListener('click', _clearFilters);
 
-  // FAB + Quick-add
-  container.querySelector('#fab').addEventListener('click', _openQuickAdd);
-  container.querySelector('#qaBackdrop').addEventListener('click', _closeQuickAdd);
-  container.querySelector('#qaCloseBtn').addEventListener('click', _closeQuickAdd);
-  container.querySelector('#qaYesterdayBtn').addEventListener('click', () => {
-    container.querySelector('#qaDate').value = isoDate(new Date(Date.now() - 864e5));
-  });
-  container.querySelectorAll('.qa-preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      container.querySelector('#qaAmount').value = btn.dataset.amount;
-      container.querySelector('#qaAmount').focus();
-    });
-  });
-  container.querySelectorAll('.qa-cat-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      container.querySelectorAll('.qa-cat-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      qaCategory = btn.dataset.cat;
-    });
-  });
-  container.querySelector('#qaSaveBtn').addEventListener('click', _saveCash);
-  container.querySelector('#qaAmount').addEventListener('keydown', e => {
-    if (e.key === 'Enter') _saveCash();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') _closeQuickAdd();
-  });
+  // Refresh the list after a cash entry is added via the shared FAB
+  // (mounted at the app-shell level; see components/quickAdd.js).
+  window.addEventListener('fintrack:cash-added', loadTransactions);
 
   // Expand button delegation on txContainer
   container.querySelector('#txContainer').addEventListener('click', e => {
@@ -449,7 +364,7 @@ function _renderTransactions(txs, total, page, pages) {
               <div class="tx-name">${esc(tx.merchant || 'Unknown')}</div>
               <div class="tx-meta">
                 <span class="tx-bank ${bankCls}">${esc(bank)}</span>
-                ${isPending ? '<span class="thv-pending-chip">Review</span>' : ''}
+                ${tx.confidence === 'failed' ? '<span class="thv-pending-chip">Unparsed</span>' : isPending ? '<span class="thv-pending-chip">Review</span>' : ''}
                 ${catSel}
               </div>
             </div>
@@ -596,42 +511,4 @@ async function _saveNewTransaction() {
   container.querySelector('#newAmount').value   = '';
   container.querySelector('#newDate').value     = isoDate(new Date());
   currentPage = 1; loadTransactions();
-}
-
-// ── Quick-add (cash) ──────────────────────────────────────
-
-function _openQuickAdd() {
-  container.querySelector('#qaDate').value   = isoDate(new Date());
-  container.querySelector('#qaAmount').value = '';
-  container.querySelector('#qaNote').value   = '';
-  qaCategory = 'other';
-  container.querySelectorAll('.qa-cat-btn').forEach(b => b.classList.remove('active'));
-  container.querySelector('.qa-cat-btn[data-cat="other"]').classList.add('active');
-  container.querySelector('#quickAdd').classList.add('open');
-  container.querySelector('#qaBackdrop').classList.add('open');
-  setTimeout(() => container.querySelector('#qaAmount').focus(), 320);
-}
-
-function _closeQuickAdd() {
-  container.querySelector('#quickAdd').classList.remove('open');
-  container.querySelector('#qaBackdrop').classList.remove('open');
-}
-
-async function _saveCash() {
-  const amount = parseFloat(container.querySelector('#qaAmount').value);
-  if (!amount || amount <= 0) {
-    const inp = container.querySelector('#qaAmount');
-    inp.style.borderColor = 'var(--red)';
-    setTimeout(() => { inp.style.borderColor = ''; }, 900);
-    inp.focus(); return;
-  }
-  await createCashTransaction({
-    amount, category: qaCategory,
-    note: container.querySelector('#qaNote').value.trim(),
-    date: container.querySelector('#qaDate').value,
-  });
-  container.querySelector('#qaAmount').value = '';
-  container.querySelector('#qaNote').value   = '';
-  container.querySelector('#qaAmount').focus();
-  loadTransactions();
 }

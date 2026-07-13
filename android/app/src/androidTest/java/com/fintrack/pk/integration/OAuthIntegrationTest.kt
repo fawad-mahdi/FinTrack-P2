@@ -145,42 +145,9 @@ class OAuthIntegrationTest {
         Logger.logInfo("OAuthIntegrationTest", "Token deletion test passed")
     }
 
-    /**
-     * Test credentials loading.
-     */
-    @Test
-    fun testCredentialsLoading() {
-        Logger.logInfo("OAuthIntegrationTest", "Testing credentials loading")
-        
-        // Create mock credentials file
-        createMockCredentialsFile()
-        
-        // Load credentials
-        val credentials = oauthTokenManager.loadCredentials()
-        
-        assertNotNull("Credentials should be loaded", credentials)
-        assertEquals("Client ID should match", "test_client_id", credentials?.clientId)
-        assertEquals("Project ID should match", "test_project", credentials?.projectId)
-        assertEquals("Auth URI should match", "https://accounts.google.com/o/oauth2/auth", credentials?.authUri)
-        assertEquals("Token URI should match", "https://oauth2.googleapis.com/token", credentials?.tokenUri)
-        
-        Logger.logInfo("OAuthIntegrationTest", "Credentials loading test passed")
-    }
-
-    /**
-     * Test credentials loading with missing file.
-     */
-    @Test
-    fun testCredentialsLoadingMissing() {
-        Logger.logInfo("OAuthIntegrationTest", "Testing credentials loading with missing file")
-        
-        // No credentials file exists
-        val credentials = oauthTokenManager.loadCredentials()
-        
-        assertNull("Credentials should be null when file missing", credentials)
-        
-        Logger.logInfo("OAuthIntegrationTest", "Credentials loading (missing) test passed")
-    }
+    // Credentials-loading tests removed: the app no longer ships or reads
+    // credentials.json. The OAuth client is Android-type (client ID only,
+    // compiled in via BuildConfig) with no client secret.
 
     /**
      * Test ensure valid token with valid token.
@@ -314,24 +281,4 @@ class OAuthIntegrationTest {
         tokenFile.writeText(tokenContent)
     }
 
-    /**
-     * Create a mock credentials file for testing.
-     */
-    private fun createMockCredentialsFile() {
-        val credentialsContent = """
-        {
-            "installed": {
-                "client_id": "test_client_id",
-                "project_id": "test_project",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_secret": "test_client_secret",
-                "redirect_uris": ["com.fintrack.pk:/oauth2redirect"]
-            }
-        }
-        """.trimIndent()
-        
-        credentialsFile.writeText(credentialsContent)
-    }
 }

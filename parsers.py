@@ -1,7 +1,12 @@
 import re
 from datetime import datetime
 from html import unescape
-from typing import Optional
+from typing import Optional, Union
+
+from bank_registry import find_bank
+from generic_parser import (
+    SKIP, _SkipSentinel, is_non_transaction, parse_failed_stub, parse_generic,
+)
 from merchants import normalize_merchant
 
 
@@ -37,8 +42,8 @@ def guess_category(merchant: str) -> str:
         "fuel": ["pso", "shell", "total", "attock", "fuel", "petrol", "caltex", "hascol", "byco"],
         "dining": ["restaurant", "cafe", "pizza", "kfc", "mcdonald", "food", "eat", "burger", "nando", "cheezious", "subway", "domino", "hardee", "biryani", "foodpanda"],
         "shopping": ["ndure", "khaadi", "sapphire", "gul ahmed", "outfitters", "clothing", "store", "liberty books", "book", "lals", "bonanza", "sana safinaz", "beechtree", "ego"],
-        "utilities": ["kelectric", "k-electric", "ssgc", "ptcl", "jazz", "telenor", "zong", "ufone", "nayatel", "stormfiber", "lesco", "iesco", "wapda"],
-        "transfer": ["transfer", "ibft", "sent from", "beneficiary", "bank", "sent to", "easypaisa", "jazzcash", "sadapay", "nayapay"],
+        "utilities": ["kelectric", "k-electric", "ssgc", "ptcl", "jazz", "telenor", "zong", "ufone", "nayatel", "stormfiber", "lesco", "iesco", "wapda", "easyload", "top-up", "topup", "mobile load"],
+        "transfer": ["transfer", "ibft", "raast", "wallet", "sent from", "beneficiary", "bank", "sent to", "easypaisa", "jazzcash", "sadapay", "nayapay"],
         "atm": ["atm", "withdrawal", "cash"],
         "medical": ["pharmacy", "hospital", "clinic", "lab", "medical", "shifa", "aga khan", "dawaai"],
         "education": ["school", "university", "college", "tuition", "academy"],
@@ -230,21 +235,56 @@ def parse_meezan(text: str, gmail_id: str = "", email_date: str = "") -> Optiona
 
 # ─── ROUTER ───────────────────────────────────────────────────
 
-BANK_CONFIG = {
-    "SCB": {
-        "sender": "alerts.pk@sc.com",
-        "parser": parse_scb,
-    },
-    "Meezan": {
-        "sender": "no-reply@meezanbank.com",
-        "parser": parse_meezan,
-    },
+# Bank-specific parsers that outrank the generic engine when they
+# produce a high-confidence result. Banks not listed here rely
+# entirely on generic_parser.
+BANK_OVERRIDES = {
+    "SCB": [parse_scb],
+    "Meezan": [parse_meezan],
 }
 
+_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1, "failed": 0}
 
-def parse_email(text: str, sender: str, gmail_id: str = "", email_date: str = "") -> Optional[dict]:
-    sender_lower = sender.lower()
-    for bank, config in BANK_CONFIG.items():
-        if config["sender"] in sender_lower:
-            return config["parser"](text, gmail_id, email_date)
-    return None
+
+def parse_email(text: str, sender: str, gmail_id: str = "", email_date: str = "", extra_entries: Optional[list] = None) -> Optional[Union[dict, _SkipSentinel]]:
+    """
+    Route an email to a transaction dict.
+
+    extra_entries: user-added registry entries (bank_registry.entries_from_user_banks).
+
+    Returns:
+      None  — sender is not a registered bank (email ignored)
+      SKIP  — registered bank, but a non-transaction email (OTP/login/promo)
+      dict  — a transaction; confidence 'failed' means nothing could be
+              extracted and the row is a pending-review stub
+    """
+    entry = find_bank(sender, extra_entries)
+    if entry is None:
+        return None
+
+    clean = strip_html(text)
+    if is_non_transaction(clean):
+        return SKIP
+
+    bank = entry["bank"]
+
+    override_result = None
+    for override in BANK_OVERRIDES.get(bank, []):
+        result = override(text, gmail_id, email_date)
+        if result:
+            if result.get("confidence") == "high":
+                return result
+            if override_result is None:
+                override_result = result
+
+    generic = parse_generic(clean, bank, gmail_id, email_date)
+    if generic is not None:
+        generic["category"] = guess_category(generic["merchant"])
+        if override_result and _CONFIDENCE_RANK.get(override_result["confidence"], 0) >= _CONFIDENCE_RANK.get(generic["confidence"], 0):
+            return override_result
+        return generic
+
+    if override_result:
+        return override_result
+
+    return parse_failed_stub(clean, bank, gmail_id, email_date)

@@ -11,7 +11,7 @@ admin UI (US-20).
 """
 
 import re
-from typing import List, Optional, Tuple
+from typing import Optional, List, Tuple
 
 # ─── DEFAULT RULES ─────────────────────────────────────────────
 # (pattern, clean_name) — order matters, more specific first

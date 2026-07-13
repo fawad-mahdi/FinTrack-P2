@@ -14,9 +14,11 @@
         android:text="🔒"
         android:textSize="36sp"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/pinTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="72dp" />
+        app:layout_constraintVertical_chainStyle="packed"
+        app:layout_constraintVertical_bias="0.02" />
 
     <TextView
         android:id="@+id/pinTitle"
@@ -26,9 +28,9 @@
         android:textStyle="bold"
         android:textColor="#4EDEA3"
         app:layout_constraintTop_toBottomOf="@id/lockIcon"
+        app:layout_constraintBottom_toTopOf="@id/pinSubtitle"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <TextView
         android:id="@+id/pinSubtitle"
@@ -37,9 +39,9 @@
         android:textSize="14sp"
         android:textColor="#bbcabf"
         app:layout_constraintTop_toBottomOf="@id/pinTitle"
+        app:layout_constraintBottom_toTopOf="@id/pinDotsLayout"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <LinearLayout
         android:id="@+id/pinDotsLayout"
@@ -47,9 +49,9 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/pinSubtitle"
+        app:layout_constraintBottom_toTopOf="@id/pinErrorText"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp">
+        app:layout_constraintEnd_toEndOf="parent">
 
         <ImageView android:id="@+id/pinDot1" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
         <ImageView android:id="@+id/pinDot2" android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/pin_dot_empty" android:layout_marginHorizontal="10dp" />
@@ -65,9 +67,9 @@
         android:textColor="#ffb4ab"
         android:visibility="invisible"
         app:layout_constraintTop_toBottomOf="@id/pinDotsLayout"
+        app:layout_constraintBottom_toTopOf="@id/numberPad"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <GridLayout
         android:id="@+id/numberPad"
@@ -77,9 +79,9 @@
         android:rowCount="4"
         android:useDefaultMargins="false"
         app:layout_constraintTop_toBottomOf="@id/pinErrorText"
+        app:layout_constraintBottom_toTopOf="@id/fingerprintButton"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="24dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/fingerprintButton"
@@ -89,9 +91,9 @@
         android:text="Use Fingerprint"
         android:textColor="#4EDEA3"
         app:layout_constraintTop_toBottomOf="@id/numberPad"
+        app:layout_constraintBottom_toTopOf="@id/resetPinButton"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/resetPinButton"
@@ -101,10 +103,8 @@
         android:text="@string/pin_reset_button"
         android:textColor="#bbcabf"
         app:layout_constraintTop_toBottomOf="@id/fingerprintButton"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="32dp" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

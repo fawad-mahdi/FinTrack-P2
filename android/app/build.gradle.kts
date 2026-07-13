@@ -4,6 +4,29 @@ plugins {
     id("com.chaquo.python")
 }
 
+// ─── OAuth client IDs (Android-type Google clients: no client secret) ───
+// Configure in ~/.gradle/gradle.properties (NOT the repo one) or env vars:
+//   FINTRACK_OAUTH_CLIENT_ID_RELEASE  (Android client for the Play App Signing SHA-1)
+//   FINTRACK_OAUTH_CLIENT_ID_DEBUG    (Android client for the debug keystore SHA-1)
+fun secretProperty(name: String): String =
+    (project.findProperty(name) as String?) ?: System.getenv(name) ?: ""
+
+// Google requires the reversed-client-ID custom scheme for Android clients.
+fun oauthRedirectScheme(clientId: String): String =
+    if (clientId.endsWith(".apps.googleusercontent.com"))
+        "com.googleusercontent.apps." + clientId.removeSuffix(".apps.googleusercontent.com")
+    else
+        "com.fintrack.pk" // placeholder so builds work before the client ID is configured
+
+val oauthClientIdRelease = secretProperty("FINTRACK_OAUTH_CLIENT_ID_RELEASE")
+val oauthClientIdDebug = secretProperty("FINTRACK_OAUTH_CLIENT_ID_DEBUG")
+
+// ─── Release signing (upload keystore lives OUTSIDE the repo) ───
+// Configure in ~/.gradle/gradle.properties or env vars:
+//   FINTRACK_KEYSTORE_PATH, FINTRACK_KEYSTORE_PASSWORD,
+//   FINTRACK_KEY_ALIAS, FINTRACK_KEY_PASSWORD
+val keystorePath = secretProperty("FINTRACK_KEYSTORE_PATH")
+
 android {
     namespace = "com.fintrack.pk"
     compileSdk = 35
@@ -12,17 +35,29 @@ android {
         applicationId = "com.fintrack.pk"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // AppAuth redirect scheme for OAuth
+        // AppAuth redirect scheme for OAuth (overridden per build type below)
         manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk"
+        buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
 
         ndk {
             // Chaquopy supports these ABIs
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        if (keystorePath.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = secretProperty("FINTRACK_KEYSTORE_PASSWORD")
+                keyAlias = secretProperty("FINTRACK_KEY_ALIAS")
+                keyPassword = secretProperty("FINTRACK_KEY_PASSWORD")
+            }
         }
     }
 
@@ -33,16 +68,24 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystorePath.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            buildConfigField("String", "OAUTH_CLIENT_ID", "\"$oauthClientIdRelease\"")
+            manifestPlaceholders["appAuthRedirectScheme"] = oauthRedirectScheme(oauthClientIdRelease)
         }
         debug {
             isMinifyEnabled = false
+            buildConfigField("String", "OAUTH_CLIENT_ID", "\"$oauthClientIdDebug\"")
+            manifestPlaceholders["appAuthRedirectScheme"] = oauthRedirectScheme(oauthClientIdDebug)
         }
         create("dev") {
             isMinifyEnabled = false
             isDebuggable = true
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk.dev"
+            buildConfigField("String", "OAUTH_CLIENT_ID", "\"$oauthClientIdDebug\"")
+            manifestPlaceholders["appAuthRedirectScheme"] = oauthRedirectScheme(oauthClientIdDebug)
             resValue("string", "app_name", "FinTrack Dev")
         }
     }
@@ -79,6 +122,7 @@ chaquopy {
             install("google-auth-oauthlib==0.8.0")
             install("python-multipart==0.0.5")
             install("pydantic==1.10.13")  // Pydantic 1.x doesn't require Rust
+            install("python-dotenv==1.0.1")  // Pure-Python; server.py imports it at module load
         }
     }
 }

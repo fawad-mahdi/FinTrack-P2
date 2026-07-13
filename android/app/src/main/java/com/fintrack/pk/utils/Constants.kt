@@ -42,10 +42,26 @@ object Constants {
     const val KEY_PYTHON_EXTRACTED = "python_extracted"
     const val KEY_LAST_BACKGROUND_TIME = "last_background_time"
 
-    // OAuth
-    const val OAUTH_REDIRECT_SCHEME = "com.fintrack.pk"
-    const val OAUTH_REDIRECT_HOST = "oauth2callback"
-    const val OAUTH_REDIRECT_URI = "$OAUTH_REDIRECT_SCHEME://$OAUTH_REDIRECT_HOST"
+    // OAuth (Android-type Google client: no client secret ships with the app)
+    const val OAUTH_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
+    const val OAUTH_TOKEN_URI = "https://oauth2.googleapis.com/token"
+    const val OAUTH_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+
+    // Client ID is injected at build time from gradle properties (see build.gradle.kts).
+    val OAUTH_CLIENT_ID: String
+        get() = com.fintrack.pk.BuildConfig.OAUTH_CLIENT_ID
+
+    // Google requires the reversed-client-ID custom scheme for Android clients.
+    // Must stay in sync with the appAuthRedirectScheme manifest placeholder.
+    val OAUTH_REDIRECT_URI: String
+        get() {
+            val id = OAUTH_CLIENT_ID
+            val scheme = if (id.endsWith(".apps.googleusercontent.com"))
+                "com.googleusercontent.apps." + id.removeSuffix(".apps.googleusercontent.com")
+            else
+                "com.fintrack.pk"
+            return "$scheme:/oauth2callback"
+        }
 
     // Network
     const val NETWORK_TIMEOUT_SECONDS = 30L

@@ -10,6 +10,14 @@ export function init(el) {
   _render();
 }
 
+// Refresh dashboard stats after a cash entry is added via the shared FAB
+// (mounted at the app-shell level; see components/quickAdd.js). Registered
+// once at module load — `container` guards against firing before this view
+// has been initialized.
+window.addEventListener('fintrack:cash-added', () => {
+  if (container) _loadAll();
+});
+
 export function destroy() {}
 
 // ── Render shell ─────────────────────────────────────────

@@ -66,8 +66,15 @@ def _build_filters(
         conditions.append("tx_date >= ?")
         params.append(effective_from)
     if date_to:
-        conditions.append("tx_date <= ?")
-        params.append(date_to + "T23:59:59")  # inclusive end date
+        # Inclusive end date: stored timestamps may include sub-second precision,
+        # so use an exclusive upper bound at the next day's midnight.
+        try:
+            end_excl = (date_type.fromisoformat(date_to[:10]) + timedelta(days=1)).isoformat()
+            conditions.append("tx_date < ?")
+            params.append(end_excl)
+        except ValueError:
+            conditions.append("tx_date <= ?")
+            params.append(date_to)
 
     if bank:
         conditions.append("bank = ?")
@@ -145,6 +152,20 @@ def init_db():
             amount REAL NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (category, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS user_banks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bank TEXT NOT NULL,
+            address TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions (tx_date);
@@ -411,6 +432,26 @@ def get_last_sync():
     return dict(row) if row else None
 
 
+# ─── SETTINGS ────────────────────────────────────────────────────
+
+def get_setting(key: str) -> Optional[str]:
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
 # ─── CATEGORY MAPPINGS ───────────────────────────────────────────
 
 def get_learned_category(merchant: str) -> Optional[str]:
@@ -450,6 +491,45 @@ def upsert_category_mapping(merchant: str, category: str):
 def delete_category_mapping(merchant: str):
     conn = get_db()
     conn.execute("DELETE FROM merchant_categories WHERE LOWER(merchant)=LOWER(?)", (merchant,))
+    conn.commit()
+    conn.close()
+
+
+# ─── USER BANKS ──────────────────────────────────────────────────
+
+def get_user_banks() -> List[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, bank, address, enabled, created_at FROM user_banks ORDER BY bank, address"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_user_bank(bank: str, address: str) -> Optional[dict]:
+    """Insert a user-added bank sender. Returns the new row, or None if the
+    address already exists (UNIQUE COLLATE NOCASE constraint)."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT INTO user_banks (bank, address) VALUES (?, ?)",
+            (bank, address),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, bank, address, enabled, created_at FROM user_banks WHERE id=?",
+            (cur.lastrowid,),
+        ).fetchone()
+        return dict(row)
+    except sqlite3.IntegrityError:
+        return None  # duplicate address
+    finally:
+        conn.close()
+
+
+def delete_user_bank(bank_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM user_banks WHERE id=?", (bank_id,))
     conn.commit()
     conn.close()
 
@@ -627,7 +707,8 @@ def get_monthly_report(month: str) -> dict:
     merch_rows = conn.execute(
         """SELECT COALESCE(merchant, 'Unknown') AS merchant,
                   COALESCE(SUM(amount), 0) AS total,
-                  COUNT(*) AS tx_count
+                  COUNT(*) AS count,
+                  COALESCE(MAX(category), 'other') AS category
            FROM transactions
            WHERE tx_type = 'debit' AND status = 'confirmed'
              AND tx_date >= ? AND tx_date < ?
@@ -670,14 +751,21 @@ def get_monthly_report(month: str) -> dict:
             return None
         return round((curr - prev) / abs(prev) * 100, 1)
 
+    prev_tx_count = conn.execute(
+        """SELECT COUNT(*) AS c FROM transactions
+           WHERE status = 'confirmed' AND tx_date >= ? AND tx_date < ?""",
+        (prev_start, prev_end),
+    ).fetchone()["c"]
+
     vs_last_month = {
-        "income_change":  income   - prev_income,
-        "expense_change": expenses - prev_expenses,
-        "savings_change": savings  - prev_savings,
-        "income_pct":     pct_chg(income,   prev_income),
-        "expense_pct":    pct_chg(expenses, prev_expenses),
-        "savings_pct":    pct_chg(savings,  prev_savings),
-        "prev_month":     prev_month,
+        "income_change":       income   - prev_income,
+        "expenses_change":     expenses - prev_expenses,
+        "savings_change":      savings  - prev_savings,
+        "income_change_pct":   pct_chg(income,   prev_income),
+        "expenses_change_pct": pct_chg(expenses, prev_expenses),
+        "savings_change_pct":  pct_chg(savings,  prev_savings),
+        "tx_count_change":     totals_row["tx_count"] - prev_tx_count,
+        "prev_month":          prev_month,
     }
 
     # ── Section 6: By Source / Bank ─────────────────────────
@@ -689,13 +777,26 @@ def get_monthly_report(month: str) -> dict:
            ORDER BY count DESC""",
         (start, end),
     ).fetchall()
-    by_source = [dict(r) for r in src_rows]
+    by_source = {r["bank"]: r["count"] for r in src_rows}
 
     conn.close()
 
+    # Days elapsed in the reporting month (used for daily-average spend).
+    year_i, mo_i = int(month[:4]), int(month[5:7])
+    today = date_type.today()
+    if today.year == year_i and today.month == mo_i:
+        days_elapsed = today.day
+    else:
+        days_elapsed = calendar.monthrange(year_i, mo_i)[1]
+    avg_per_day = round(expenses / days_elapsed) if days_elapsed > 0 else 0
+
     return {
         "month":                month,
-        "totals":               {"income": income, "expenses": expenses, "savings": savings, "tx_count": totals_row["tx_count"]},
+        "total_income":         income,
+        "total_expenses":       expenses,
+        "total_savings":        savings,
+        "total_transactions":   totals_row["tx_count"],
+        "avg_per_day":          avg_per_day,
         "by_category":          by_category,
         "top_merchants":        top_merchants,
         "biggest_transactions": biggest_transactions,

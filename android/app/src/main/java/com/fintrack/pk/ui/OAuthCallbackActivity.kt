@@ -107,17 +107,8 @@ class OAuthCallbackActivity : AppCompatActivity() {
      */
     private fun exchangeAuthorizationCode(authResponse: AuthorizationResponse) {
         Logger.logInfo("OAuthCallbackActivity", "Starting token exchange")
-        
-        // Load credentials to get client_secret
-        val credentials = tokenManager.loadCredentials()
-        if (credentials == null) {
-            Logger.logError("OAuthCallbackActivity", "Failed to load credentials for token exchange")
-            Toast.makeText(this, "Failed to load OAuth credentials", Toast.LENGTH_LONG).show()
-            finish()
-            return
-        }
-        
-        // Create token request
+
+        // Android-type OAuth client: PKCE only, no client secret needed.
         val tokenRequest = authResponse.createTokenExchangeRequest()
         
         // Perform token exchange
@@ -147,7 +138,7 @@ class OAuthCallbackActivity : AppCompatActivity() {
                 Logger.logInfo("OAuthCallbackActivity", "Token exchange successful")
                 
                 // Store tokens using OAuthTokenManager
-                val tokensSaved = tokenManager.saveInitialTokens(tokenResponse, credentials)
+                val tokensSaved = tokenManager.saveInitialTokens(tokenResponse)
                 
                 if (tokensSaved) {
                     Logger.logInfo("OAuthCallbackActivity", "Tokens saved successfully")

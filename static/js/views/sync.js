@@ -358,8 +358,7 @@ async function _doSync() {
       msg = 'No connection. Check your network.';
       showRetry = false;
     } else if (e.status === 500 && e.detail?.includes('Gmail auth failed')) {
-      msg = 'Gmail not connected — please authenticate on desktop first.';
-      showRetry = false;
+      msg = 'Gmail connection failed unexpectedly. Please try again.';
     } else if (e.status === 500 && e.detail?.includes('Gmail search failed')) {
       msg = 'Gmail search failed. Tap to retry.';
     }
@@ -383,6 +382,20 @@ let authPolling = false;
 
 async function _startGmailConnect() {
   const feedback = container.querySelector('#syncFeedback');
+
+  // Android WebView: WebViewManager injects AndroidBridge, whose
+  // requestSync() runs the native AppAuth/Custom-Tab OAuth flow and writes
+  // token.json directly — no consent URL to open in-page.
+  if (window.AndroidBridge && typeof window.AndroidBridge.requestSync === 'function') {
+    feedback.innerHTML = `
+      <div class="sync-connect">
+        <p>Opening Google sign-in… Finish connecting your Gmail — syncing will start automatically.</p>
+      </div>`;
+    window.AndroidBridge.requestSync();
+    _pollForConnection();
+    return;
+  }
+
   try {
     const { auth_url } = await startGmailAuth();
     // window.open is usually blocked here (not a direct user gesture),

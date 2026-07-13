@@ -23,7 +23,9 @@ import org.junit.Assert.*
  * 
  * Requirements: 15.4
  */
-@RunWith(MockitoJUnitRunner::class)
+// Silent runner: the shared setup() stubs editor methods that only some
+// tests use; the strict runner fails those tests with UnnecessaryStubbing.
+@RunWith(MockitoJUnitRunner.Silent::class)
 class PinAuthenticationActivityTest {
 
     @Mock

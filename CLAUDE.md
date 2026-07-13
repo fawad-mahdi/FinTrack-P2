@@ -122,12 +122,23 @@ Environment variables set by `ServerProcessManager` before launching `server.py`
 
 ## Python Code Structure
 
-- `server.py` — All FastAPI routes. Key: `/api/sync` accepts `{date_from?, date_to?}` and returns `{emails_found, parsed_ok, pending_review, skipped_parse, skipped_duplicate}`
+- `server.py` — All FastAPI routes. Key: `/api/sync` accepts `{date_from?, date_to?}` and returns `{emails_found, parsed_ok, pending_review, unparsed, skipped_parse, skipped_duplicate}`
 - `database.py` — SQLite wrapper. Schema includes `source` column (`gmail`|`manual`) and `merchant_categories` table for category learning
-- `parsers.py` — Regex-based email parsers for SCB and Meezan formats; outputs normalized transaction dicts
+- `bank_registry.py` — Declarative registry of Pakistani bank/wallet alert sender domains. Adding a bank = appending one dict. Entries with `verified: False` are unvalidated domain guesses
+- `generic_parser.py` — Bank-agnostic extraction engine (skip filter → amount → debit/credit → merchant → date → confidence). Confidence: `high` auto-confirms; `medium`/`low`/`failed` land in Pending Review
+- `parsers.py` — Router (`parse_email`) + bank-specific override parsers for SCB and Meezan (they win over the generic engine when they yield high confidence). Returns `None` (unregistered sender), `SKIP` (non-transaction email), or a transaction dict
 - `merchants.py` — Merchant name normalization (strip bank prefixes, lowercase, fuzzy cleanup)
 - `auth_gmail.py` — Gmail OAuth using `InstalledAppFlow`; token cached to `token.json`
 
-## No Test Suite for Desktop
+## Desktop ↔ Android File Mirroring
 
-The desktop Python app has no automated tests (intentional — personal local tool). The Android layer has unit tests (`test/`) and instrumentation tests (`androidTest/`).
+Python and JS files exist in two copies: repo root (desktop, Python 3.12) and `android/app/src/main/python/` (Android, Python 3.9). Rules:
+
+- **Byte-identical (edit root copy, then `cp` to Android)**: `parsers.py`, `merchants.py`, `bank_registry.py`, `generic_parser.py`, `static/js/views/sync.js`, `static/js/views/activity.js`, `static/js/api.js`. Enforced by `tests/test_copies_in_sync.py`.
+- **Intentionally divergent (port changes by hand)**: `server.py`, `database.py`, `auth_gmail.py`, `static/js/views/dashboard.js`. The Android `database.py`/`dashboard.js` are a matched pair with different monthly-report payload keys — do not unify one without the other.
+
+## Test Suites
+
+- Desktop Python: `python3 -m pytest` (uses `.venv`; `tests/` — API, parsers, generic engine, OAuth, mirror-sync guard)
+- Frontend JS: `npm test` (vitest, `tests/*.test.js`)
+- Android: `cd android && ./gradlew test` (unit) and `./gradlew connectedAndroidTest` (instrumentation, needs device)

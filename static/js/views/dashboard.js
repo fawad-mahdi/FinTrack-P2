@@ -10,6 +10,14 @@ export function init(el) {
   _render();
 }
 
+// Refresh dashboard stats after a cash entry is added via the shared FAB
+// (mounted at the app-shell level; see components/quickAdd.js). Registered
+// once at module load — `container` guards against firing before this view
+// has been initialized.
+window.addEventListener('fintrack:cash-added', () => {
+  if (container) _loadAll();
+});
+
 export function destroy() {}
 
 // ── Render shell ─────────────────────────────────────────
@@ -229,19 +237,19 @@ async function _loadCategories() {
 async function _loadRecent() {
   const listEl = container.querySelector('#dvRecentTx');
   try {
-    const data = await getTransactions({ limit: 5, page: 1 });
+    const data = await getTransactions({ page_size: 5, page: 1, status: 'confirmed' });
     const txs = Array.isArray(data) ? data : (data.items || []);
     if (!txs.length) {
       listEl.innerHTML = '<div class="dv2-empty" style="padding:20px 16px">No transactions yet</div>';
       return;
     }
     listEl.innerHTML = txs.slice(0, 5).map(tx => {
-      const isDebit = (tx.type || tx.transaction_type) === 'debit';
+      const isDebit = tx.tx_type === 'debit';
       const amount  = Math.abs(tx.amount ?? 0);
       const emoji   = CAT_EMOJI[tx.category] || '📦';
-      const name    = tx.merchant || tx.description || tx.note || 'Transaction';
-      const dateStr = tx.date
-        ? new Date(tx.date + 'T00:00:00').toLocaleDateString('en-PK', { day:'numeric', month:'short' })
+      const name    = tx.merchant || 'Transaction';
+      const dateStr = tx.tx_date
+        ? new Date(tx.tx_date.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-PK', { day:'numeric', month:'short' })
         : '';
       return `
         <div class="dv2-tx-row">

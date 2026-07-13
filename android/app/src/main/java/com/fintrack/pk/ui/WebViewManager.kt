@@ -144,6 +144,12 @@ class WebViewManager(
             // Enable DOM storage for web app state persistence
             settings.domStorageEnabled = true
             Logger.logInfo(COMPONENT_NAME, "DOM storage enabled")
+
+            // Never cache HTTP responses: the app is served from localhost, so
+            // caching gains nothing but serves stale JS/CSS after app updates
+            // (Chaquopy-extracted files can keep unchanged Last-Modified stamps).
+            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+            Logger.logInfo(COMPONENT_NAME, "HTTP cache disabled (LOAD_NO_CACHE)")
             
             // Disable file access for security (prevent unauthorized file access)
             settings.allowFileAccess = false
@@ -675,7 +681,13 @@ class WebViewManager(
      * 
      * Requirements: 4.2
      */
-    fun loadApp(serverUrl: String = "http://${Constants.SERVER_HOST}:${Constants.SERVER_PORT}") {
+    fun loadApp(
+        // ?boot= hands the per-process API token to the frontend; api.js
+        // stores it in sessionStorage, strips it from the URL, and attaches
+        // it as X-FinTrack-Token on every /api/* request.
+        serverUrl: String = "http://${Constants.SERVER_HOST}:${Constants.SERVER_PORT}/?boot=" +
+            com.fintrack.pk.server.ServerProcessManager.apiToken
+    ) {
         Logger.logInfo(COMPONENT_NAME, "Loading app from: $serverUrl")
         
         try {
