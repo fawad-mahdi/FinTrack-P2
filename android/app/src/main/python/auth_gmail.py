@@ -141,32 +141,48 @@ def get_gmail_service():
     token_path = os.path.join(config_dir, "token.json")
 
     creds = None
+    info = None
 
     if os.path.exists(token_path):
         # Load the raw token JSON and build an _AndroidCredentials instance
         # so that ANY refresh (explicit or auto-triggered by googleapiclient)
         # goes through Java networking instead of Python's broken DNS.
-        with open(token_path) as f:
-            info = json.load(f)
+        try:
+            with open(token_path) as f:
+                info = json.load(f)
+        except (ValueError, OSError):
+            # Corrupted token.json: remove it and force a clean re-auth
+            # instead of crashing every sync with a JSON error.
+            try:
+                os.remove(token_path)
+            except OSError:
+                pass
+            info = None
 
+    if info is not None:
         expiry = None
         if info.get("expiry"):
-            try:
-                # Handle both "%Y-%m-%dT%H:%M:%SZ" and "%Y-%m-%dT%H:%M:%S.%fZ"
-                exp_str = info["expiry"]
-                for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S"):
-                    try:
-                        expiry = datetime.strptime(exp_str, fmt)
-                        break
-                    except ValueError:
-                        continue
-            except Exception:
-                pass  # treat as expired → will refresh
+            # Handle both "%Y-%m-%dT%H:%M:%SZ" and "%Y-%m-%dT%H:%M:%S.%fZ"
+            exp_str = info["expiry"]
+            for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    expiry = datetime.strptime(exp_str, fmt)
+                    break
+                except ValueError:
+                    continue
+        if expiry is None:
+            # Missing or unparseable expiry: google-auth treats expiry=None
+            # as "never expires", which would skip refresh and fail later
+            # with a 401. Force it into the past so the refresh path runs.
+            expiry = datetime(1970, 1, 1)
 
         creds = _AndroidCredentials(
             token_path=token_path,
-            token=info.get("token"),
-            refresh_token=info.get("refresh_token"),
+            # Kotlin persists "" when Google returned no token; google-auth
+            # only checks `token is not None`, so "" would pass .valid and
+            # 401 on every API call. Normalize empty strings to None.
+            token=info.get("token") or None,
+            refresh_token=info.get("refresh_token") or None,
             token_uri=info.get("token_uri", "https://oauth2.googleapis.com/token"),
             client_id=info.get("client_id", ""),
             client_secret=info.get("client_secret", ""),
