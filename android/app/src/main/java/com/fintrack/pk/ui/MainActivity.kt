@@ -1148,12 +1148,33 @@ class MainActivity : AppCompatActivity() {
                 Logger.logInfo("MainActivity", "Authorization request built")
                 Logger.logInfo("MainActivity", "Redirect URI: ${com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI}")
 
-                // Launch auth flow using Custom Chrome Tab
+                // Launch auth flow using Custom Chrome Tab.
+                //
+                // Must use performAuthorizationRequest() with completion
+                // PendingIntents: AppAuth's RedirectUriReceiverActivity owns the
+                // custom-scheme redirect, matches it to the in-flight request
+                // (which holds the PKCE code_verifier), and fires the completed/
+                // canceled intent into OAuthCallbackActivity with the serialized
+                // AuthorizationResponse/Exception extras that fromIntent() reads.
+                // (getAuthorizationRequestIntent() + startActivity() drops the
+                // result — nothing receives it — leaving the callback activity
+                // with an empty intent: "Authorization failed: No response".)
                 val authService = net.openid.appauth.AuthorizationService(this@MainActivity)
-                val authIntent = authService.getAuthorizationRequestIntent(authRequest)
+                val callbackIntent = Intent(this@MainActivity, OAuthCallbackActivity::class.java)
+                // AppAuth delivers the result by fill-in; on Android 12+ that
+                // requires an explicitly MUTABLE PendingIntent.
+                val piFlags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                } else {
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                }
 
                 Logger.logInfo("MainActivity", "Launching Custom Chrome Tab for OAuth")
-                startActivity(authIntent)
+                authService.performAuthorizationRequest(
+                    authRequest,
+                    android.app.PendingIntent.getActivity(this@MainActivity, 0, callbackIntent, piFlags),
+                    android.app.PendingIntent.getActivity(this@MainActivity, 1, callbackIntent, piFlags)
+                )
 
             } catch (e: Exception) {
                 Logger.logError("MainActivity", "Failed to initiate OAuth flow: ${e.message}")

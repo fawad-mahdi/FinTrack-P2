@@ -56,19 +56,20 @@
             android:label="@string/debug_logs"
             android:parentActivityName=".ui.SettingsActivity" />
 
-        <!-- OAuth Callback Activity -->
+        <!-- OAuth Callback Activity.
+             NOT registered on the redirect scheme: AppAuth's
+             RedirectUriReceiverActivity (declared by the appauth library on
+             ${appAuthRedirectScheme}) must be the ONLY receiver of the
+             browser redirect — it matches the redirect to the in-flight
+             request (PKCE verifier) and launches this activity via the
+             completion PendingIntent with the AppAuth response extras.
+             Registering this activity on the scheme too makes the two race
+             for the redirect, and a raw VIEW intent here carries no AppAuth
+             extras → "Authorization failed: No response received". -->
         <activity
             android:name=".ui.OAuthCallbackActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Reversed-client-ID scheme, injected per build type from build.gradle.kts -->
-                <data android:scheme="${appAuthRedirectScheme}" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:launchMode="singleTask" />
 
         <!-- File Provider for sharing files -->
         <provider
