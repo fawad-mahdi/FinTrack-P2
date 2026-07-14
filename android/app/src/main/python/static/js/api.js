@@ -12,7 +12,22 @@ export class ApiError extends Error {
   }
 }
 
+// Per-launch API capability token supplied by the native layer through the
+// JavaScript bridge. Every /api/* request must carry it as X-API-Token.
+function apiToken() {
+  try {
+    if (typeof AndroidBridge !== 'undefined' && AndroidBridge.getApiToken) {
+      return AndroidBridge.getApiToken() || '';
+    }
+  } catch { /* bridge unavailable */ }
+  return '';
+}
+
 async function request(path, options = {}) {
+  options = {
+    ...options,
+    headers: { 'X-API-Token': apiToken(), ...(options.headers || {}) },
+  };
   let res;
   try {
     res = await fetch(BASE + path, options);
@@ -35,9 +50,6 @@ function json(method, path, body, extraOptions = {}) {
     ...extraOptions,
   });
 }
-
-// ── Auth ──────────────────────────────────────────────────
-export const authenticate     = (pin)          => json('POST', '/api/auth', { pin });
 
 // ── Sync ──────────────────────────────────────────────────
 export const syncGmail = (dateFrom, dateTo) => {

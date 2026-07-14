@@ -51,6 +51,7 @@ class DataPersistenceRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("DataPersistenceRegressionTest", "Test setup complete")
     }
@@ -60,6 +61,7 @@ class DataPersistenceRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("DataPersistenceRegressionTest", "Test teardown complete")
     }
