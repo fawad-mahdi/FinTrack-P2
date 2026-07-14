@@ -56,7 +56,9 @@
             android:label="@string/debug_logs"
             android:parentActivityName=".ui.SettingsActivity" />
 
-        <!-- OAuth Callback Activity -->
+        <!-- OAuth Callback Activity. The scheme comes from the per-variant
+             appAuthRedirectScheme Gradle placeholder so dev and release
+             builds claim distinct callback identities. -->
         <activity
             android:name=".ui.OAuthCallbackActivity"
             android:exported="true"
@@ -66,7 +68,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="com.fintrack.pk"
+                    android:scheme="${appAuthRedirectScheme}"
                     android:host="oauth2callback" />
             </intent-filter>
         </activity>

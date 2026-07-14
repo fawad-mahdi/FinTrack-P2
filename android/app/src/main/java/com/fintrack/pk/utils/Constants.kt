@@ -42,10 +42,12 @@ object Constants {
     const val KEY_PYTHON_EXTRACTED = "python_extracted"
     const val KEY_LAST_BACKGROUND_TIME = "last_background_time"
 
-    // OAuth
-    const val OAUTH_REDIRECT_SCHEME = "com.fintrack.pk"
+    // OAuth — the redirect scheme is variant-aware (dev builds use their own
+    // scheme) and must stay in sync with the appAuthRedirectScheme Gradle
+    // placeholder consumed by the manifest callback filter.
+    val OAUTH_REDIRECT_SCHEME: String = com.fintrack.pk.BuildConfig.OAUTH_REDIRECT_SCHEME
     const val OAUTH_REDIRECT_HOST = "oauth2callback"
-    const val OAUTH_REDIRECT_URI = "$OAUTH_REDIRECT_SCHEME://$OAUTH_REDIRECT_HOST"
+    val OAUTH_REDIRECT_URI: String = "$OAUTH_REDIRECT_SCHEME://$OAUTH_REDIRECT_HOST"
 
     // Network
     const val NETWORK_TIMEOUT_SECONDS = 30L
