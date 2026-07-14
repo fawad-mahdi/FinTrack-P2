@@ -57,6 +57,7 @@ class ErrorHandlingRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("ErrorHandlingRegressionTest", "Test setup complete")
     }
@@ -72,6 +73,7 @@ class ErrorHandlingRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("ErrorHandlingRegressionTest", "Test teardown complete")
     }
