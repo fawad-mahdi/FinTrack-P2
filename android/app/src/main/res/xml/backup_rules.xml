@@ -2,7 +2,10 @@
 <full-backup-content>
     <!-- Exclude sensitive files from backup -->
     <exclude domain="sharedpref" path="pin_prefs.xml" />
+    <exclude domain="sharedpref" path="gmail_oauth_tokens.xml" />
     <exclude domain="database" path="fintrack.db" />
+    <!-- Entire config dir: OAuth client credentials and any legacy token artifacts -->
+    <exclude domain="file" path="config/" />
     <exclude domain="file" path="config/token.json" />
     <exclude domain="file" path="logs/" />
 </full-backup-content>

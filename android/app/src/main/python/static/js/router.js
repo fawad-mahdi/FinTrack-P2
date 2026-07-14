@@ -1,5 +1,4 @@
 // static/js/router.js
-import { init as authInit } from './auth.js';
 import * as dashboard from './views/dashboard.js';
 import * as activity  from './views/activity.js';
 import * as budget    from './views/budget.js';
@@ -74,19 +73,19 @@ function navigate(viewId) {
 }
 
 // ── Boot ──────────────────────────────────────────────────
+// User locking happens natively (Keystore PIN screen) before the WebView is
+// shown, and the API is guarded by the per-launch capability token attached
+// in api.js — so the web layer boots straight into the app shell.
 
-authInit(() => {
-  // Auth passed — show the app shell
-  document.getElementById('appShell').style.display = 'flex';
+document.getElementById('appShell').style.display = 'flex';
 
-  // Wire up bottom nav buttons
-  document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view));
-  });
-
-  // Handle browser back/forward
-  window.addEventListener('hashchange', () => navigate(getViewId()));
-
-  // Navigate to initial view
-  navigate(getViewId());
+// Wire up bottom nav buttons
+document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.view));
 });
+
+// Handle browser back/forward
+window.addEventListener('hashchange', () => navigate(getViewId()));
+
+// Navigate to initial view
+navigate(getViewId());

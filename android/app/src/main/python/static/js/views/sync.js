@@ -245,7 +245,7 @@ async function _doSync() {
       msg = 'No connection. Check your network.';
       showRetry = false;
     } else if (e.status === 500 && e.detail?.includes('Gmail auth failed')) {
-      msg = 'Gmail not connected — please authenticate on desktop first.';
+      msg = 'Gmail not connected — connect your account from Settings.';
       showRetry = false;
     } else if (e.status === 500 && e.detail?.includes('Gmail search failed')) {
       msg = 'Gmail search failed. Tap to retry.';
