@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -7,7 +8,7 @@ from functools import partial
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 
 from database import (
@@ -27,11 +28,9 @@ from parsers import parse_email, BANK_CONFIG
 BASE_DIR = os.environ.get("FINTRACK_APP_DIR") or os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-PIN  = os.getenv("PIN",  "1234")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 
-_authenticated  = set()
 _MAX_SYNC_DAYS  = 90
 
 
@@ -46,20 +45,35 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
-# ─── PIN AUTH ────────────────────────────────────────────────────
+# ─── API AUTHORIZATION ───────────────────────────────────────────
+#
+# Every /api/* request must carry the per-launch capability token that the
+# native layer generates (ServerProcessManager injects FINTRACK_API_TOKEN
+# into this process; WebViewManager hands the same value to the frontend,
+# which sends it as the X-API-Token header). There is no PIN and no
+# process-global session state: a request either presents the current
+# launch's token or is rejected. Read the env var per request so a server
+# restart inside a long-lived process never compares against a stale copy.
 
-@app.post("/api/auth")
-async def authenticate(request: Request):
-    body = await request.json()
-    if body.get("pin") == PIN:
-        _authenticated.add("user")
-        return {"ok": True}
-    raise HTTPException(status_code=401, detail="Wrong PIN")
+def _expected_api_token():
+    # type: () -> str
+    return os.environ.get("FINTRACK_API_TOKEN", "")
 
 
-def check_auth():
-    if "user" not in _authenticated:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        expected = _expected_api_token()
+        provided = request.headers.get("x-api-token", "")
+        if not expected or not hmac.compare_digest(provided, expected):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+    return await call_next(request)
+
+
+@app.get("/health")
+async def health():
+    """Unauthenticated liveness probe for the native process manager."""
+    return {"status": "ok"}
 
 
 # ─── GMAIL SYNC (US-14, US-15) ───────────────────────────────────
@@ -75,8 +89,6 @@ async def sync_gmail(request: Request):
     - User-edited transactions are never overwritten (insert_transaction only does INSERT)
     - Frontend displays "already imported" count to user
     """
-    check_auth()
-
     body: dict = {}
     try:
         body = await request.json()
@@ -190,7 +202,6 @@ async def list_transactions(
     date_to:    str   = None,
     search:     str   = None,
 ):
-    check_auth()
     return get_transactions(
         status=status, page=page, page_size=page_size,
         period=period, bank=bank, category=category,
@@ -202,7 +213,6 @@ async def list_transactions(
 @app.post("/api/transactions")
 async def create_transaction(request: Request):
     """Manually add a transaction (US-10)."""
-    check_auth()
     body = await request.json()
 
     for field in ["amount", "tx_type", "merchant", "bank"]:
@@ -233,7 +243,6 @@ async def create_transaction(request: Request):
 @app.post("/api/transactions/cash")
 async def create_cash_transaction(request: Request):
     """Cash expense quick-add (US-20)."""
-    check_auth()
     body = await request.json()
 
     try:
@@ -269,7 +278,6 @@ async def create_cash_transaction(request: Request):
 
 @app.patch("/api/transactions/{tx_id}")
 async def patch_transaction(tx_id: int, request: Request):
-    check_auth()
     body = await request.json()
     update_transaction(tx_id, body)
     return {"ok": True}
@@ -277,7 +285,6 @@ async def patch_transaction(tx_id: int, request: Request):
 
 @app.delete("/api/transactions/{tx_id}")
 async def remove_transaction(tx_id: int):
-    check_auth()
     delete_transaction(tx_id)
     return {"ok": True}
 
@@ -295,7 +302,6 @@ async def summary(
     date_to:    str   = None,
     search:     str   = None,
 ):
-    check_auth()
     return get_summary(
         period=period, bank=bank, category=category,
         amount_min=amount_min, amount_max=amount_max,
@@ -314,7 +320,6 @@ async def category_summary(
     date_to:    str   = None,
     search:     str   = None,
 ):
-    check_auth()
     return get_category_summary(
         period=period, bank=bank, category=category,
         amount_min=amount_min, amount_max=amount_max,
@@ -326,7 +331,6 @@ async def category_summary(
 
 @app.get("/api/sync/status")
 async def sync_status():
-    check_auth()
     return get_last_sync() or {"message": "No sync yet"}
 
 
@@ -334,13 +338,11 @@ async def sync_status():
 
 @app.get("/api/categories/mappings")
 async def list_mappings():
-    check_auth()
     return get_category_mappings()
 
 
 @app.post("/api/categories/mappings")
 async def add_mapping(request: Request):
-    check_auth()
     body     = await request.json()
     merchant = (body.get("merchant") or "").strip()
     category = (body.get("category") or "").strip()
@@ -352,7 +354,6 @@ async def add_mapping(request: Request):
 
 @app.delete("/api/categories/mappings/{merchant}")
 async def remove_mapping(merchant: str):
-    check_auth()
     delete_category_mapping(merchant)
     return {"ok": True}
 
@@ -361,7 +362,6 @@ async def remove_mapping(merchant: str):
 
 @app.get("/api/budgets")
 async def get_budgets_endpoint(month: str = None):
-    check_auth()
     if not month:
         month = date_type.today().strftime("%Y-%m")
     return get_budgets(month)
@@ -369,7 +369,6 @@ async def get_budgets_endpoint(month: str = None):
 
 @app.put("/api/budgets")
 async def upsert_budget_endpoint(request: Request):
-    check_auth()
     body     = await request.json()
     category = (body.get("category") or "").strip()
     if not category:
@@ -385,7 +384,6 @@ async def upsert_budget_endpoint(request: Request):
 
 @app.post("/api/budgets/suggest")
 async def suggest_budgets_endpoint(request: Request):
-    check_auth()
     body: dict = {}
     try:
         body = await request.json()
@@ -399,7 +397,6 @@ async def suggest_budgets_endpoint(request: Request):
 
 @app.get("/api/report")
 async def monthly_report(month: str = None):
-    check_auth()
     if not month:
         month = date_type.today().strftime("%Y-%m")
     return get_monthly_report(month)

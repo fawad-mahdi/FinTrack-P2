@@ -340,9 +340,16 @@ class MainActivity : AppCompatActivity() {
                     Logger.logInfo("MainActivity", "Python runtime extracted and verified successfully")
                 }
                 
-                // Step 2: Skip native PIN — the web frontend handles authentication
-                Logger.logInfo("MainActivity", "Skipping native PIN, web frontend handles auth")
-                initializeAndStartServer()
+                // Step 2: Native Keystore PIN is the single lock policy.
+                // The embedded API is protected separately by the per-launch
+                // capability token (ApiTokenProvider), so there is no web PIN.
+                if (isPinConfigured()) {
+                    Logger.logInfo("MainActivity", "PIN configured, requesting login")
+                    launchPinAuthentication(PinAuthenticationActivity.MODE_LOGIN, REQUEST_CODE_PIN_LOGIN)
+                } else {
+                    Logger.logInfo("MainActivity", "No PIN configured, requesting setup")
+                    launchPinAuthentication(PinAuthenticationActivity.MODE_SETUP, REQUEST_CODE_PIN_SETUP)
+                }
                 
             } catch (e: Exception) {
                 Logger.logError("MainActivity", "Error during initialization", e)
@@ -351,6 +358,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * Check whether a PIN has been set up (stored Keystore-encrypted by
+     * PinAuthenticationActivity).
+     */
+    private fun isPinConfigured(): Boolean {
+        return getSharedPreferences(
+            com.fintrack.pk.utils.Constants.PREFS_PIN,
+            Context.MODE_PRIVATE
+        ).contains(com.fintrack.pk.utils.Constants.KEY_ENCRYPTED_PIN)
+    }
+
     /**
      * Launch PIN authentication activity
      */
@@ -453,10 +471,13 @@ class MainActivity : AppCompatActivity() {
                 if (healthy) {
                     Logger.logInfo("MainActivity", "Server is healthy, loading interface")
                     updateLoadingText("Loading app...")
-                    
+
                     // Check OAuth status and show banner if not configured
                     checkOAuthStatus()
-                    
+
+                    // Hand the per-launch API capability token to the frontend
+                    webViewManager.setApiToken(com.fintrack.pk.utils.ApiTokenProvider.token)
+
                     // Task 7.3: Load WebView
                     webViewManager.loadApp()
                     
@@ -713,9 +734,12 @@ class MainActivity : AppCompatActivity() {
         if (pauseTimestamp > 0) {
             val timeInBackground = System.currentTimeMillis() - pauseTimestamp
             Logger.logInfo("MainActivity", "Time in background: ${timeInBackground}ms (${timeInBackground / 1000}s)")
-            
-            // Native PIN re-auth removed — web frontend handles authentication.
-            // After long background, the WebView will show the PIN screen automatically.
+
+            if (timeInBackground > PIN_REAUTH_THRESHOLD_MS && isPinConfigured()) {
+                Logger.logInfo("MainActivity", "Background threshold exceeded, requiring PIN re-authentication")
+                // pauseTimestamp is reset in onActivityResult on success
+                requirePinAuthentication()
+            }
         }
         
         // Refresh the Gmail OAuth token if it is close to expiry

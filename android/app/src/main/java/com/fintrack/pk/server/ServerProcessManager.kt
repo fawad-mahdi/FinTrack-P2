@@ -98,7 +98,10 @@ class ServerProcessManager(private val context: Context) {
                         "FINTRACK_APP_DIR" to (context.filesDir.absolutePath),
                         "FINTRACK_CONFIG_DIR" to (File(context.filesDir, "config").absolutePath),
                         "FINTRACK_LOGS_DIR" to (File(context.filesDir, "logs").absolutePath),
-                        "FINTRACK_DB_DIR" to File(context.filesDir, "databases").absolutePath
+                        "FINTRACK_DB_DIR" to File(context.filesDir, "databases").absolutePath,
+                        // Per-launch capability token: the server rejects any
+                        // /api/* request that does not present it (AUTH-04)
+                        "FINTRACK_API_TOKEN" to com.fintrack.pk.utils.ApiTokenProvider.token
                     )
                     injectPythonEnvironment(python, envDirs)
                     pythonModule?.callAttr("start_server", SERVER_HOST, SERVER_PORT)
