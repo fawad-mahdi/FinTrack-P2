@@ -11,6 +11,8 @@
         android:maxSdkVersion="32"
         tools:ignore="ScopedStorage" />
 
+    <!-- Cleartext is denied globally; network_security_config.xml permits it
+         only for the embedded loopback server (127.0.0.1/localhost). -->
     <application
         android:name=".FinTrackApplication"
         android:allowBackup="true"
@@ -18,10 +20,11 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FinTrackPK"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         tools:targetApi="31">
 
         <!-- Main Activity -->
