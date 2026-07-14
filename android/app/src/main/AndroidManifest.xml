@@ -76,6 +76,14 @@
             </intent-filter>
         </activity>
 
+        <!-- The AppAuth library registers its own receiver for the same
+             redirect scheme; remove it so OAuthCallbackActivity (which
+             enforces state binding + PKCE) is the single callback entry
+             point and no ambiguous-resolution chooser can appear. -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            tools:node="remove" />
+
         <!-- File Provider for sharing files -->
         <provider
             android:name="androidx.core.content.FileProvider"

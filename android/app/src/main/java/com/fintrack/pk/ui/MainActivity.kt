@@ -1158,8 +1158,12 @@ class MainActivity : AppCompatActivity() {
                     android.net.Uri.parse(credentials.authUri),
                     android.net.Uri.parse(credentials.tokenUri)
                 )
-                
-                // Build AuthorizationRequest
+
+                // Build AuthorizationRequest with explicit PKCE (S256).
+                // The Builder also generates a random state; both are
+                // persisted below so OAuthCallbackActivity can verify the
+                // redirect belongs to this request before exchanging it.
+                val codeVerifier = net.openid.appauth.CodeVerifierUtil.generateRandomCodeVerifier()
                 val authRequest = net.openid.appauth.AuthorizationRequest.Builder(
                     serviceConfig,
                     credentials.clientId,
@@ -1167,16 +1171,24 @@ class MainActivity : AppCompatActivity() {
                     android.net.Uri.parse(com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI)
                 )
                     .setScope("https://www.googleapis.com/auth/gmail.readonly")
+                    .setCodeVerifier(codeVerifier)
                     .build()
-                
-                Logger.logInfo("MainActivity", "Authorization request built")
+
+                Logger.logInfo("MainActivity", "Authorization request built (PKCE S256 + state)")
                 Logger.logInfo("MainActivity", "Redirect URI: ${com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI}")
                 Logger.logInfo("MainActivity", "Scope: https://www.googleapis.com/auth/gmail.readonly")
-                
+
+                // Persist the pending request (state + PKCE verifier) in
+                // Keystore-backed encrypted storage for callback validation
+                com.fintrack.pk.utils.GmailTokenBroker.savePendingAuthRequest(
+                    this@MainActivity,
+                    authRequest.jsonSerializeString()
+                )
+
                 // Launch auth flow using Custom Chrome Tab
                 val authService = net.openid.appauth.AuthorizationService(this@MainActivity)
                 val authIntent = authService.getAuthorizationRequestIntent(authRequest)
-                
+
                 Logger.logInfo("MainActivity", "Launching Custom Chrome Tab for OAuth")
                 startActivity(authIntent)
                 

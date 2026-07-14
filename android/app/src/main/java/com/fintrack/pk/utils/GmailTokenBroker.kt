@@ -34,6 +34,12 @@ object GmailTokenBroker {
     private const val KEY_EXPIRY = "expiry"
     private const val KEY_TOKEN_URI = "token_uri"
 
+    private const val KEY_PENDING_AUTH_REQUEST = "pending_auth_request"
+    private const val KEY_PENDING_AUTH_CREATED_AT = "pending_auth_created_at"
+
+    /** A pending authorization request older than this is rejected. */
+    private const val PENDING_AUTH_MAX_AGE_MS = 10 * 60 * 1000L
+
     private const val DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
     /** Refresh this many seconds before the actual expiry. */
@@ -218,6 +224,51 @@ object GmailTokenBroker {
         } catch (e: Exception) {
             Logger.logError(COMPONENT_NAME, "Token refresh failed: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Persist the serialized in-flight AuthorizationRequest so the exported
+     * OAuth callback can bind an incoming redirect (state + PKCE verifier)
+     * to a request this app actually initiated (AUTH-06). Stored in the
+     * same Keystore-backed encrypted prefs as the tokens.
+     */
+    @Synchronized
+    fun savePendingAuthRequest(context: Context, authRequestJson: String) {
+        prefs(context).edit()
+            .putString(KEY_PENDING_AUTH_REQUEST, authRequestJson)
+            .putLong(KEY_PENDING_AUTH_CREATED_AT, System.currentTimeMillis())
+            .apply()
+        Logger.logInfo(COMPONENT_NAME, "Pending authorization request persisted")
+    }
+
+    /**
+     * One-shot retrieval of the pending AuthorizationRequest: the stored
+     * value is removed before being returned, so a redirect can only be
+     * matched once (no replay). Returns null when there is no pending
+     * request or it has expired.
+     */
+    @Synchronized
+    fun consumePendingAuthRequest(context: Context): String? {
+        return try {
+            val p = prefs(context)
+            val json = p.getString(KEY_PENDING_AUTH_REQUEST, null)
+            val createdAt = p.getLong(KEY_PENDING_AUTH_CREATED_AT, 0L)
+            p.edit()
+                .remove(KEY_PENDING_AUTH_REQUEST)
+                .remove(KEY_PENDING_AUTH_CREATED_AT)
+                .apply()
+            when {
+                json == null -> null
+                System.currentTimeMillis() - createdAt > PENDING_AUTH_MAX_AGE_MS -> {
+                    Logger.logError(COMPONENT_NAME, "Pending authorization request expired, rejecting")
+                    null
+                }
+                else -> json
+            }
+        } catch (e: Exception) {
+            Logger.logError(COMPONENT_NAME, "Failed to read pending authorization request: ${e.message}")
+            null
         }
     }
 
