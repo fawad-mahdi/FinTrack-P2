@@ -1,9 +1,6 @@
 import os
 import json
 import base64
-import hashlib
-import secrets
-from typing import Optional
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from google.oauth2.credentials import Credentials
@@ -60,30 +57,6 @@ class _AndroidCredentials(Credentials):
             json.dump(token_json, f, indent=2)
 
 
-# PKCE + state storage for in-flight OAuth — persisted to disk so it survives server restarts
-def _get_oauth_state_path():
-    return os.path.join(_get_config_dir(), ".oauth_state.json")
-
-
-def _load_oauth_state():
-    # type: () -> dict
-    path = _get_oauth_state_path()
-    if os.path.exists(path):
-        try:
-            with open(path) as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def _save_oauth_state(state_dict):
-    # type: (dict) -> None
-    path = _get_oauth_state_path()
-    with open(path, "w") as f:
-        json.dump(state_dict, f)
-
-
 class OAuthRequiredError(Exception):
     """Raised when OAuth authorization is needed (no valid token on Android)."""
     pass
@@ -92,60 +65,6 @@ class OAuthRequiredError(Exception):
 def _get_config_dir():
     """Resolve config dir lazily so env vars injected after import are picked up."""
     return os.environ.get('FINTRACK_CONFIG_DIR', os.path.dirname(__file__))
-
-
-def _load_client_credentials():
-    """Load client_id and client_secret from credentials.json."""
-    config_dir = _get_config_dir()
-    creds_path = os.path.join(config_dir, "credentials.json")
-    if not os.path.exists(creds_path):
-        raise FileNotFoundError(
-            "Missing credentials.json. Download OAuth credentials from "
-            "Google Cloud Console and place in the config directory."
-        )
-    with open(creds_path) as f:
-        data = json.load(f)
-    installed = data.get("installed", data.get("web", {}))
-    return installed["client_id"], installed["client_secret"]
-
-
-def build_oauth_url(redirect_uri):
-    """Build the Google OAuth authorization URL with PKCE.
-
-    Returns (auth_url, state) — caller must open auth_url in a browser.
-    The /oauth/callback route will use the stored PKCE verifier.
-    """
-    client_id, _ = _load_client_credentials()
-
-    # PKCE: generate code_verifier and code_challenge
-    code_verifier = secrets.token_urlsafe(64)
-    code_challenge = (
-        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
-        .rstrip(b"=")
-        .decode()
-    )
-
-    state = secrets.token_urlsafe(32)
-
-    # Store for the callback (persisted to disk for server restart survival)
-    all_state = _load_oauth_state()
-    all_state[state] = {"code_verifier": code_verifier, "redirect_uri": redirect_uri}
-    _save_oauth_state(all_state)
-
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": " ".join(SCOPES),
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    }
-
-    auth_url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)
-    return auth_url, state
 
 
 def _java_post(url, form_data):
@@ -201,59 +120,6 @@ def _java_post(url, form_data):
     if code >= 400:
         raise RuntimeError(f"Token endpoint returned {code}: {resp_body}")
     return json.loads(resp_body)
-
-
-def save_pending_exchange(code, state):
-    """Save the auth code + PKCE verifier for Kotlin-side token exchange.
-
-    On Android 14+, outbound HTTPS from Chaquopy threads fails (DNS broken).
-    Instead of exchanging here, we persist the data so the Kotlin layer
-    can do the exchange via OkHttp.
-    """
-    all_state = _load_oauth_state()
-    if state not in all_state:
-        raise ValueError("Invalid or expired OAuth state")
-
-    oauth_data = all_state.pop(state)
-    _save_oauth_state(all_state)  # remove used state
-
-    client_id, client_secret = _load_client_credentials()
-
-    pending = {
-        "code": code,
-        "code_verifier": oauth_data["code_verifier"],
-        "redirect_uri": oauth_data["redirect_uri"],
-        "client_id": client_id,
-        "client_secret": client_secret,
-    }
-
-    config_dir = _get_config_dir()
-    pending_path = os.path.join(config_dir, ".oauth_pending.json")
-    with open(pending_path, "w") as f:
-        json.dump(pending, f)
-
-    return True
-
-
-def get_pending_exchange():
-    """Return pending OAuth exchange data, or None."""
-    config_dir = _get_config_dir()
-    pending_path = os.path.join(config_dir, ".oauth_pending.json")
-    if not os.path.exists(pending_path):
-        return None
-    try:
-        with open(pending_path) as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def clear_pending_exchange():
-    """Remove the pending OAuth exchange file."""
-    config_dir = _get_config_dir()
-    pending_path = os.path.join(config_dir, ".oauth_pending.json")
-    if os.path.exists(pending_path):
-        os.remove(pending_path)
 
 
 def get_gmail_service():

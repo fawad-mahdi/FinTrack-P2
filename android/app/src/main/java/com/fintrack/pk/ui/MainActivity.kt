@@ -718,9 +718,8 @@ class MainActivity : AppCompatActivity() {
             // After long background, the WebView will show the PIN screen automatically.
         }
         
-        // Complete any pending OAuth exchange (Kotlin does the HTTPS call)
+        // Refresh the Gmail OAuth token if it is close to expiry
         scope.launch {
-            completePendingOAuthExchange()
             checkAndRefreshToken()
         }
         
@@ -1037,123 +1036,6 @@ class MainActivity : AppCompatActivity() {
     }
     
     /**
-     * Complete a pending OAuth token exchange on the Kotlin side.
-     *
-     * The Python server cannot make outbound HTTPS calls on Android 14+
-     * (Chaquopy threads lack proper network binding, DNS fails).  Instead
-     * the /oauth/callback route saves the auth code + PKCE verifier to a
-     * file, and this method picks it up and does the actual exchange via
-     * standard Java HttpURLConnection on Dispatchers.IO (which works).
-     */
-    private suspend fun completePendingOAuthExchange() = withContext(Dispatchers.IO) {
-        try {
-            // Step 1: Ask Python server for pending exchange data
-            val pendingUrl = java.net.URL("http://127.0.0.1:8000/api/oauth/pending")
-            val pendingConn = pendingUrl.openConnection() as java.net.HttpURLConnection
-            pendingConn.connectTimeout = 3000
-            pendingConn.readTimeout = 3000
-            val pendingBody = try {
-                pendingConn.inputStream.bufferedReader().readText()
-            } catch (e: Exception) {
-                Logger.logInfo("MainActivity", "No server for pending OAuth check")
-                return@withContext
-            } finally {
-                pendingConn.disconnect()
-            }
-
-            val pendingJson = com.google.gson.JsonParser.parseString(pendingBody).asJsonObject
-            if (pendingJson.get("pending")?.asBoolean != true) {
-                return@withContext
-            }
-
-            Logger.logInfo("MainActivity", "Found pending OAuth exchange, completing via Kotlin")
-
-            val code = pendingJson.get("code").asString
-            val codeVerifier = pendingJson.get("code_verifier").asString
-            val redirectUri = pendingJson.get("redirect_uri").asString
-            val clientId = pendingJson.get("client_id").asString
-            val clientSecret = pendingJson.get("client_secret").asString
-
-            // Step 2: Exchange auth code for tokens via HTTPS (Kotlin-side DNS works)
-            val formData = "code=${java.net.URLEncoder.encode(code, "UTF-8")}" +
-                "&client_id=${java.net.URLEncoder.encode(clientId, "UTF-8")}" +
-                "&client_secret=${java.net.URLEncoder.encode(clientSecret, "UTF-8")}" +
-                "&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}" +
-                "&grant_type=authorization_code" +
-                "&code_verifier=${java.net.URLEncoder.encode(codeVerifier, "UTF-8")}"
-
-            val tokenUrl = java.net.URL("https://oauth2.googleapis.com/token")
-            val tokenConn = tokenUrl.openConnection() as javax.net.ssl.HttpsURLConnection
-            tokenConn.requestMethod = "POST"
-            tokenConn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            tokenConn.doOutput = true
-            tokenConn.connectTimeout = 15000
-            tokenConn.readTimeout = 15000
-
-            tokenConn.outputStream.use { it.write(formData.toByteArray(Charsets.UTF_8)) }
-
-            val responseCode = tokenConn.responseCode
-            val responseBody = if (responseCode < 400) {
-                tokenConn.inputStream.bufferedReader().readText()
-            } else {
-                val err = tokenConn.errorStream?.bufferedReader()?.readText() ?: "unknown"
-                tokenConn.disconnect()
-                Logger.logError("MainActivity", "Token exchange failed ($responseCode): $err")
-                runOnUiThread {
-                    android.widget.Toast.makeText(this@MainActivity,
-                        "Token exchange failed: $err", android.widget.Toast.LENGTH_LONG).show()
-                }
-                return@withContext
-            }
-            tokenConn.disconnect()
-
-            val tokens = com.google.gson.JsonParser.parseString(responseBody).asJsonObject
-            Logger.logInfo("MainActivity", "Token exchange successful")
-
-            // Step 3: Save token.json in google-auth compatible format
-            val accessToken = tokens.get("access_token")?.asString ?: ""
-            val refreshToken = tokens.get("refresh_token")?.asString ?: ""
-            val expiresIn = tokens.get("expires_in")?.asLong ?: 3600L
-            val expiry = java.time.Instant.now().plusSeconds(expiresIn)
-
-            val tokenJson = com.google.gson.JsonObject().apply {
-                addProperty("token", accessToken)
-                addProperty("refresh_token", refreshToken)
-                addProperty("token_uri", "https://oauth2.googleapis.com/token")
-                addProperty("client_id", clientId)
-                addProperty("client_secret", clientSecret)
-                add("scopes", com.google.gson.JsonArray().apply {
-                    add("https://www.googleapis.com/auth/gmail.readonly")
-                })
-                addProperty("expiry", expiry.toString().replace(".000000000Z", "Z"))
-            }
-
-            val configDir = File(filesDir, "config")
-            configDir.mkdirs()
-            File(configDir, "token.json").writeText(
-                com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(tokenJson)
-            )
-            Logger.logInfo("MainActivity", "token.json saved by Kotlin")
-
-            // Step 4: Clear the pending exchange
-            val clearUrl = java.net.URL("http://127.0.0.1:8000/api/oauth/pending")
-            val clearConn = clearUrl.openConnection() as java.net.HttpURLConnection
-            clearConn.requestMethod = "DELETE"
-            clearConn.connectTimeout = 3000
-            try { clearConn.responseCode } catch (_: Exception) {}
-            clearConn.disconnect()
-
-            runOnUiThread {
-                android.widget.Toast.makeText(this@MainActivity,
-                    "Gmail connected successfully!", android.widget.Toast.LENGTH_SHORT).show()
-            }
-
-        } catch (e: Exception) {
-            Logger.logError("MainActivity", "Pending OAuth exchange error: ${e.message}")
-        }
-    }
-
-    /**
      * Check and refresh OAuth token if needed.
      *
      * Task 9.3 Implementation:
@@ -1228,57 +1110,6 @@ class MainActivity : AppCompatActivity() {
      *
      * Requirements: 6.1, 6.3, 6.5
      */
-
-    /**
-     * Start OAuth flow via the Python server's /api/oauth/url endpoint.
-     *
-     * Uses loopback redirect (http://127.0.0.1:8000/oauth/callback) which
-     * works with Google's "installed" (Desktop) OAuth client type.
-     * The server handles the token exchange automatically.
-     */
-    private fun startServerOAuthFlow() {
-        scope.launch {
-            try {
-                Logger.logInfo("MainActivity", "Starting server-based OAuth flow")
-
-                val url = java.net.URL("http://127.0.0.1:8000/api/oauth/url")
-                val response = withContext(Dispatchers.IO) {
-                    val conn = url.openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 5000
-                    try {
-                        val body = conn.inputStream.bufferedReader().readText()
-                        com.google.gson.JsonParser.parseString(body).asJsonObject
-                    } finally {
-                        conn.disconnect()
-                    }
-                }
-
-                val authUrl = response.get("url")?.asString
-                if (authUrl.isNullOrEmpty()) {
-                    showError("Failed to get OAuth URL from server")
-                    return@launch
-                }
-
-                Logger.logInfo("MainActivity", "Opening OAuth URL in browser")
-
-                // Open in system browser (Chrome) — the redirect back to
-                // http://127.0.0.1:8000/oauth/callback will be handled by
-                // the Python server running on the device.
-                runOnUiThread {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(authUrl)
-                    )
-                    startActivity(intent)
-                }
-
-            } catch (e: Exception) {
-                Logger.logError("MainActivity", "Server OAuth flow failed: ${e.message}")
-                showError("Failed to start authentication: ${e.message}")
-            }
-        }
-    }
 
     fun initiateOAuthFlow() {
         scope.launch {
@@ -1425,7 +1256,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Step 2: Check OAuth token status
                 if (!oauthTokenManager.hasToken()) {
-                    Logger.logInfo("MainActivity", "No OAuth token found, triggering server-based OAuth flow")
+                    Logger.logInfo("MainActivity", "No OAuth token found, triggering OAuth flow")
                     runOnUiThread {
                         android.widget.Toast.makeText(
                             this@MainActivity,
@@ -1434,8 +1265,8 @@ class MainActivity : AppCompatActivity() {
                         ).show()
                     }
 
-                    // Get OAuth URL from server and open in browser
-                    startServerOAuthFlow()
+                    // Launch the native AppAuth authorization flow
+                    initiateOAuthFlow()
                     return@launch
                 }
                 
@@ -1459,8 +1290,8 @@ class MainActivity : AppCompatActivity() {
                         // Clear invalid token
                         oauthTokenManager.deleteToken()
 
-                        // Trigger server-based OAuth flow
-                        startServerOAuthFlow()
+                        // Launch the native AppAuth authorization flow
+                        initiateOAuthFlow()
                         return@launch
                     }
                     
