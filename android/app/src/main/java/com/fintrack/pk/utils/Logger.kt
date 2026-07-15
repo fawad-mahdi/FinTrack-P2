@@ -19,6 +19,39 @@ object Logger {
     private lateinit var logFile: File
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
+    private const val REDACTED = "***REDACTED***"
+
+    /**
+     * Patterns for OAuth-sensitive material that must never be persisted or
+     * exported (AUTH-11). Each pattern keeps its key/prefix (group 1) and
+     * replaces the value (group 2). Covers JSON credential fields, OAuth
+     * error payloads, and URL/query parameters including the auth code.
+     */
+    private val SENSITIVE_PATTERNS: List<Regex> = listOf(
+        // JSON or key=value credential fields
+        Regex(
+            "(?i)(\"?(?:access_token|refresh_token|id_token|client_secret|" +
+                "code_verifier|code_challenge)\"?\\s*[:=]\\s*\"?)([^\"'&,\\s}]+)"
+        ),
+        // Bare "token" JSON field (google-auth token.json style)
+        Regex("(?i)(\"token\"\\s*:\\s*\")([^\"]+)"),
+        // URL/query parameters, including the authorization code on the redirect
+        Regex("(?i)([?&](?:code|access_token|refresh_token|id_token)=)([^&\\s\"]+)")
+    )
+
+    /**
+     * Redact OAuth codes, tokens, and secrets from a log line so provider
+     * payloads and credential material never reach the log file or the
+     * exportable diagnostics.
+     */
+    internal fun redactSensitive(message: String): String {
+        var result = message
+        for (pattern in SENSITIVE_PATTERNS) {
+            result = pattern.replace(result) { m -> m.groupValues[1] + REDACTED }
+        }
+        return result
+    }
+
     /**
      * Initialize the logger with application context
      */
@@ -48,7 +81,7 @@ object Logger {
         Log.e(TAG, logMessage, throwable)
         writeToFile(logMessage)
         throwable?.let {
-            writeToFile("Stack trace: ${it.stackTraceToString()}")
+            writeToFile("Stack trace: ${redactSensitive(it.stackTraceToString())}")
         }
     }
 
@@ -76,7 +109,7 @@ object Logger {
     private fun formatLogMessage(level: String, component: String, message: String): String {
         val timestamp = dateFormat.format(Date())
         val threadName = Thread.currentThread().name
-        return "[$timestamp] [$level] [$component] [$threadName] $message"
+        return "[$timestamp] [$level] [$component] [$threadName] ${redactSensitive(message)}"
     }
 
     /**
