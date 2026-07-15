@@ -36,7 +36,7 @@ android/
 
 - **Self-Contained**: Bundles Python runtime and all dependencies
 - **Offline-First**: All data stored locally in SQLite
-- **Secure**: PIN authentication with Android Keystore
+- **Secure**: Native Keystore-backed PIN lock; encrypted OAuth token storage; per-launch API capability token
 - **Gmail Sync**: Automatic transaction import from bank emails
 - **No Play Store Required**: Sideloadable APK
 
@@ -97,13 +97,16 @@ This project is currently under development. The following tasks are planned:
 
 ### Python Dependencies
 
-The following Python packages are bundled via Chaquopy:
+The following Python packages are bundled via Chaquopy (versions pinned for
+pre-built wheel availability on Python 3.9 — see the root `CLAUDE.md`):
 
-- FastAPI 0.104.1
-- Uvicorn 0.24.0
-- SQLAlchemy 2.0.23
-- Google API Python Client 2.108.0
-- Google Auth libraries
+- FastAPI 0.88.0
+- Uvicorn 0.20.0
+- SQLAlchemy 1.4.46
+- Pydantic 1.10.13
+- cryptography 3.4.8
+- Google API Python Client 2.70.0
+- Google Auth libraries (google-auth-oauthlib 0.8.0, google-auth-httplib2 0.1.0)
 
 ### Storage Locations
 
@@ -114,11 +117,51 @@ The following Python packages are bundled via Chaquopy:
 
 ## Security
 
-- Server binds only to localhost (127.0.0.1)
-- PIN stored in Android Keystore (hardware-backed when available)
-- All data in app-private storage
-- OAuth tokens stored securely
-- No external network access to server
+This section describes the controls the shipped source actually enforces.
+
+### App lock
+- A native PIN is required at startup (setup on first run, login thereafter)
+  and re-required after 5+ minutes in the background.
+- The PIN is stored encrypted via the Android Keystore (hardware-backed when
+  available), with a 3-attempt lockout. This is the single user lock; there
+  is no separate web-UI PIN.
+
+### Embedded API authorization
+- The embedded FastAPI server binds only to loopback (127.0.0.1).
+- Every `/api/*` request must present a per-launch capability token
+  (256-bit, `SecureRandom`) as the `X-API-Token` header. The native layer
+  generates it once per process, injects it into the Python server, and
+  hands it to the WebView frontend via the JS bridge. There is no default
+  PIN and no process-global session, and access dies with the process.
+- `/health` is the only unauthenticated route (liveness probe).
+
+### OAuth tokens & credentials
+- Gmail uses a single native AppAuth authorization-code flow with explicit
+  PKCE (S256) and state binding; the callback rejects forged, replayed, or
+  mismatched redirects before any token exchange.
+- Access and refresh tokens are stored in `EncryptedSharedPreferences`
+  (Android Keystore master key). The refresh token and OAuth client secret
+  are never written to plaintext files and never cross into the Python
+  layer — Python receives only a short-lived access token via the token
+  broker. Any legacy plaintext `token.json` is migrated and deleted.
+- "Disconnect Gmail" revokes the grant at Google and clears all local OAuth
+  state; reconnect uses `prompt=select_account` for deliberate account
+  choice.
+
+### Network & data
+- Cleartext traffic is denied globally; the network security config permits
+  cleartext only for the loopback server.
+- All data lives in app-private storage; the token store, config directory,
+  database, and logs are excluded from backup and device transfer.
+- Logs redact OAuth codes, tokens, and secrets before they are written or
+  exported.
+
+### Release configuration
+- The OAuth redirect scheme is variant-aware (dev builds use their own
+  scheme) and consumed from the Gradle `appAuthRedirectScheme` placeholder.
+- Registering the Android OAuth client(s) and release signing SHA-1/SHA-256
+  fingerprints in Google Cloud Console is an external step required before a
+  signed release can complete authentication.
 
 ## Testing
 

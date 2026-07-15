@@ -1,8 +1,18 @@
 # Gmail Import & Sync Screen — Design Spec
 
 **Date:** 2026-03-23
-**Status:** Approved
+**Status:** Approved (web frontend); **partially superseded** for Android — see note below.
 **Scope:** Refactor `static/index.html` into ES module architecture; implement Gmail Import & Sync screen (Stitch design); add bottom navigation bar.
+
+> **Update (Codex audit remediation):** This spec describes the **desktop/web**
+> frontend, where Gmail is authorized via the desktop browser flow and the web
+> UI shows a stub message. It no longer describes the **Android** app: Android
+> now implements a single native **AppAuth** authorization-code flow (PKCE +
+> state binding) with in-app "Connect Gmail" in Settings, encrypted Keystore
+> token storage, and a per-launch API capability token in place of the web PIN.
+> The `/api/oauth/*` server-loopback endpoints referenced historically do not
+> exist and were fully removed. See `android/README.md` → Security for the
+> current Android architecture.
 
 ---
 

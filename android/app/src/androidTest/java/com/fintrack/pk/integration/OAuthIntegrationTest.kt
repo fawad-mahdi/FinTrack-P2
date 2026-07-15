@@ -262,6 +262,52 @@ class OAuthIntegrationTest {
     }
 
     /**
+     * A pending authorization request must be consumable exactly once, so a
+     * replayed or duplicate redirect cannot be matched a second time
+     * (AUTH-06 state binding / AUTH-09 forgery coverage).
+     */
+    @Test
+    fun testPendingAuthRequestIsOneShot() {
+        Logger.logInfo("OAuthIntegrationTest", "Testing pending auth request one-shot consumption")
+
+        GmailTokenBroker.savePendingAuthRequest(context, """{"state":"abc","verifier":"xyz"}""")
+
+        val first = GmailTokenBroker.consumePendingAuthRequest(context)
+        assertNotNull("First consume should return the stored request", first)
+        assertTrue("Returned request should be the stored value", first!!.contains("abc"))
+
+        val second = GmailTokenBroker.consumePendingAuthRequest(context)
+        assertNull("Second consume must return null (no replay)", second)
+
+        Logger.logInfo("OAuthIntegrationTest", "Pending auth request one-shot test passed")
+    }
+
+    /**
+     * Disconnect must remove ALL local authorization state, not just the
+     * access token: tokens and any in-flight pending authorization request
+     * (AUTH-07). This exercises the deterministic local-clear guarantee that
+     * revokeAndClear falls back to.
+     */
+    @Test
+    fun testDisconnectClearsTokensAndPendingRequest() {
+        Logger.logInfo("OAuthIntegrationTest", "Testing disconnect clears tokens and pending request")
+
+        storeToken(expired = false)
+        GmailTokenBroker.savePendingAuthRequest(context, """{"state":"pending"}""")
+        assertTrue("Token should exist before disconnect", oauthTokenManager.hasToken())
+
+        GmailTokenBroker.clearTokens(context)
+
+        assertFalse("Token must be gone after clear", oauthTokenManager.hasToken())
+        assertNull(
+            "Pending authorization request must be cleared on disconnect",
+            GmailTokenBroker.consumePendingAuthRequest(context)
+        )
+
+        Logger.logInfo("OAuthIntegrationTest", "Disconnect clears state test passed")
+    }
+
+    /**
      * Test token lifecycle: create, validate, expire, delete.
      */
     @Test

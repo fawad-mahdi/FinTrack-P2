@@ -41,6 +41,7 @@ object GmailTokenBroker {
     private const val PENDING_AUTH_MAX_AGE_MS = 10 * 60 * 1000L
 
     private const val DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token"
+    private const val REVOKE_URI = "https://oauth2.googleapis.com/revoke"
 
     /** Refresh this many seconds before the actual expiry. */
     private const val EXPIRY_BUFFER_SECONDS = 300L
@@ -127,7 +128,12 @@ object GmailTokenBroker {
         }
     }
 
-    /** Remove all stored OAuth material (disconnect/logout). */
+    /**
+     * Remove all locally stored OAuth material (access + refresh token,
+     * token metadata, and any pending authorization request). This is a
+     * purely local clear — see [revokeAndClear] for a full disconnect that
+     * also revokes the grant at Google.
+     */
     @Synchronized
     fun clearTokens(context: Context) {
         try {
@@ -137,6 +143,42 @@ object GmailTokenBroker {
         }
         deleteLegacyArtifacts(context)
         Logger.logInfo(COMPONENT_NAME, "Token store cleared")
+    }
+
+    /**
+     * Full disconnect: revoke the grant at Google's revocation endpoint,
+     * then remove all local OAuth state. Revoking the refresh token
+     * invalidates the whole grant upstream, so the app truly loses Gmail
+     * access rather than merely forgetting a still-valid token.
+     *
+     * Best-effort on the network side — local state is always cleared even
+     * if revocation cannot be reached, so the user is never left in a
+     * half-connected state. Blocking; call off the main thread.
+     *
+     * @return true (local state is always cleared)
+     */
+    @Synchronized
+    fun revokeAndClear(context: Context): Boolean {
+        try {
+            val p = prefs(context)
+            // Prefer the refresh token: revoking it invalidates the entire
+            // grant. Fall back to the access token if that's all we have.
+            val tokenToRevoke = p.getString(KEY_REFRESH_TOKEN, null)
+                ?.takeIf { it.isNotEmpty() }
+                ?: p.getString(KEY_ACCESS_TOKEN, null)?.takeIf { it.isNotEmpty() }
+
+            if (tokenToRevoke != null) {
+                val ok = postForm(context, REVOKE_URI, mapOf("token" to tokenToRevoke)) != null
+                Logger.logInfo(COMPONENT_NAME, "Grant revocation request completed (reached endpoint: $ok)")
+            } else {
+                Logger.logInfo(COMPONENT_NAME, "No token to revoke; clearing local state only")
+            }
+        } catch (e: Exception) {
+            // Never block local cleanup on a revocation failure
+            Logger.logError(COMPONENT_NAME, "Grant revocation failed, clearing local state anyway: ${e.message}")
+        }
+        clearTokens(context)
+        return true
     }
 
     /**

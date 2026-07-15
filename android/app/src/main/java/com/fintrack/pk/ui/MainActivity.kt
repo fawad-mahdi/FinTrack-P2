@@ -1172,9 +1172,18 @@ class MainActivity : AppCompatActivity() {
                 )
                     .setScope("https://www.googleapis.com/auth/gmail.readonly")
                     .setCodeVerifier(codeVerifier)
+                    // prompt=select_account lets the user deliberately choose
+                    // (or switch) the Google account on every connect; consent
+                    // + access_type=offline guarantee a refresh token is issued
+                    // so the account can be re-authorized after switching.
+                    .setPromptValues(
+                        net.openid.appauth.AuthorizationRequest.Prompt.SELECT_ACCOUNT,
+                        net.openid.appauth.AuthorizationRequest.Prompt.CONSENT
+                    )
+                    .setAdditionalParameters(mapOf("access_type" to "offline"))
                     .build()
 
-                Logger.logInfo("MainActivity", "Authorization request built (PKCE S256 + state)")
+                Logger.logInfo("MainActivity", "Authorization request built (PKCE S256 + state, select_account)")
                 Logger.logInfo("MainActivity", "Redirect URI: ${com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI}")
                 Logger.logInfo("MainActivity", "Scope: https://www.googleapis.com/auth/gmail.readonly")
 
