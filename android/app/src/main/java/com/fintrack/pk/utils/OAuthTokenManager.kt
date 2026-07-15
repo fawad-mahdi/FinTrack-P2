@@ -97,7 +97,9 @@ class OAuthTokenManager(private val context: Context) {
     }
 
     /**
-     * Delete all stored OAuth tokens (for disconnect/logout).
+     * Delete all locally stored OAuth tokens without revoking the grant.
+     * Used on refresh-failure paths where the grant is already invalid
+     * upstream; for a user-initiated disconnect use [disconnect].
      *
      * @return true if successful
      */
@@ -110,6 +112,19 @@ class OAuthTokenManager(private val context: Context) {
             Logger.logError("OAuthTokenManager", "Failed to delete token: ${e.message}")
             false
         }
+    }
+
+    /**
+     * Full disconnect for user-initiated "Disconnect Gmail": revokes the
+     * grant at Google, then clears all local OAuth state (tokens and any
+     * pending authorization request). Runs the network call off the main
+     * thread.
+     *
+     * @return true (local state is always cleared)
+     */
+    suspend fun disconnect(): Boolean = withContext(Dispatchers.IO) {
+        Logger.logInfo("OAuthTokenManager", "Disconnecting Gmail (revoke + local clear)")
+        GmailTokenBroker.revokeAndClear(context)
     }
 
     /**
