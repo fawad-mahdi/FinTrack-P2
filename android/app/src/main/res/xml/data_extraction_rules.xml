@@ -3,14 +3,20 @@
     <cloud-backup>
         <!-- Exclude sensitive files from cloud backup -->
         <exclude domain="sharedpref" path="pin_prefs.xml" />
+        <exclude domain="sharedpref" path="gmail_oauth_tokens.xml" />
         <exclude domain="database" path="fintrack.db" />
+        <!-- Entire config dir: OAuth client credentials and any legacy token artifacts -->
+        <exclude domain="file" path="config/" />
         <exclude domain="file" path="config/token.json" />
         <exclude domain="file" path="logs/" />
     </cloud-backup>
     <device-transfer>
         <!-- Exclude sensitive files from device transfer -->
         <exclude domain="sharedpref" path="pin_prefs.xml" />
+        <exclude domain="sharedpref" path="gmail_oauth_tokens.xml" />
         <exclude domain="database" path="fintrack.db" />
+        <exclude domain="file" path="config/" />
         <exclude domain="file" path="config/token.json" />
+        <exclude domain="file" path="logs/" />
     </device-transfer>
 </data-extraction-rules>

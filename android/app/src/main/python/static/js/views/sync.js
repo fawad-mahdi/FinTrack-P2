@@ -358,7 +358,12 @@ async function _doSync() {
       msg = 'No connection. Check your network.';
       showRetry = false;
     } else if (e.status === 500 && e.detail?.includes('Gmail auth failed')) {
+<<<<<<< HEAD
       msg = 'Gmail connection failed unexpectedly. Please try again.';
+=======
+      msg = 'Gmail not connected — connect your account from Settings.';
+      showRetry = false;
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
     } else if (e.status === 500 && e.detail?.includes('Gmail search failed')) {
       msg = 'Gmail search failed. Tap to retry.';
     }

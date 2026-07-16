@@ -1,16 +1,17 @@
-import os
-import json
 import base64
+<<<<<<< HEAD
 from typing import Optional
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
+=======
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request  # noqa: F401 — kept for desktop compat
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
+<<<<<<< HEAD
 class _AndroidCredentials(Credentials):
     """Credentials subclass that refreshes tokens via Java HttpURLConnection.
 
@@ -64,15 +65,17 @@ class _AndroidCredentials(Credentials):
             json.dump(token_json, f, indent=2)
 
 
+=======
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 class OAuthRequiredError(Exception):
     """Raised when OAuth authorization is needed (no valid token on Android)."""
     pass
 
 
-def _get_config_dir():
-    """Resolve config dir lazily so env vars injected after import are picked up."""
-    return os.environ.get('FINTRACK_CONFIG_DIR', os.path.dirname(__file__))
+def _get_broker_access_token():
+    """Fetch a short-lived access token from the native GmailTokenBroker.
 
+<<<<<<< HEAD
 
 def _java_post(url, form_data):
     """HTTP POST using Java's HttpURLConnection via the active Android network.
@@ -127,16 +130,33 @@ def _java_post(url, form_data):
     if code >= 400:
         raise RuntimeError(f"Token endpoint returned {code}: {resp_body}")
     return json.loads(resp_body)
+=======
+    All long-lived OAuth material (refresh token, client secret) lives in
+    Android Keystore-backed encrypted storage on the Kotlin side; Python
+    only ever receives an already-refreshed access token. The broker also
+    performs any needed refresh through the device's active network, which
+    works from Chaquopy threads on Android 14+.
+    """
+    from com.chaquo.python import Python as ChaquoPython
+    from com.fintrack.pk.utils import GmailTokenBroker
+
+    context = ChaquoPython.getPlatform().getApplication()
+    token = GmailTokenBroker.getAccessToken(context)
+    if token is None:
+        return None
+    return str(token)
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 
 
 def get_gmail_service():
     """Get authenticated Gmail API service.
 
-    On Android, the token.json is created by the native Kotlin OAuth flow
-    (AppAuth + OAuthCallbackActivity). If no token exists, raises
-    OAuthRequiredError so the server can tell the frontend to trigger
-    the native flow.
+    Tokens are created by the native Kotlin OAuth flow (AppAuth +
+    OAuthCallbackActivity) and served through GmailTokenBroker. If no valid
+    token is available, raises OAuthRequiredError so the server can tell
+    the frontend to trigger the native flow.
     """
+<<<<<<< HEAD
     config_dir = _get_config_dir()
     token_path = os.path.join(config_dir, "token.json")
 
@@ -188,18 +208,21 @@ def get_gmail_service():
             client_secret=info.get("client_secret", ""),
             scopes=SCOPES,
             expiry=expiry,
+=======
+    try:
+        access_token = _get_broker_access_token()
+    except Exception as e:
+        raise OAuthRequiredError(
+            "Gmail not connected. Please authenticate via the app. ({})".format(e)
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
         )
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(None)  # uses Java networking via _AndroidCredentials
-        else:
-            # On Android, token.json is created by native OAuth flow.
-            # Signal the caller so the frontend can trigger it.
-            raise OAuthRequiredError(
-                "Gmail not connected. Please authenticate via the app."
-            )
+    if not access_token:
+        raise OAuthRequiredError(
+            "Gmail not connected. Please authenticate via the app."
+        )
 
+    creds = Credentials(token=access_token, scopes=SCOPES)
     return build("gmail", "v1", credentials=creds)
 
 

@@ -56,6 +56,7 @@ class CriticalPathRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("CriticalPathRegressionTest", "Test setup complete")
     }
@@ -71,6 +72,7 @@ class CriticalPathRegressionTest {
         // Clean up
         prefs.edit().clear().apply()
         pinEncryptionManager.deleteKey()
+        com.fintrack.pk.utils.GmailTokenBroker.clearTokens(context)
         
         Logger.logInfo("CriticalPathRegressionTest", "Test teardown complete")
     }

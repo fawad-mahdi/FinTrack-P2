@@ -340,9 +340,16 @@ class MainActivity : AppCompatActivity() {
                     Logger.logInfo("MainActivity", "Python runtime extracted and verified successfully")
                 }
                 
-                // Step 2: Skip native PIN — the web frontend handles authentication
-                Logger.logInfo("MainActivity", "Skipping native PIN, web frontend handles auth")
-                initializeAndStartServer()
+                // Step 2: Native Keystore PIN is the single lock policy.
+                // The embedded API is protected separately by the per-launch
+                // capability token (ApiTokenProvider), so there is no web PIN.
+                if (isPinConfigured()) {
+                    Logger.logInfo("MainActivity", "PIN configured, requesting login")
+                    launchPinAuthentication(PinAuthenticationActivity.MODE_LOGIN, REQUEST_CODE_PIN_LOGIN)
+                } else {
+                    Logger.logInfo("MainActivity", "No PIN configured, requesting setup")
+                    launchPinAuthentication(PinAuthenticationActivity.MODE_SETUP, REQUEST_CODE_PIN_SETUP)
+                }
                 
             } catch (e: Exception) {
                 Logger.logError("MainActivity", "Error during initialization", e)
@@ -351,6 +358,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * Check whether a PIN has been set up (stored Keystore-encrypted by
+     * PinAuthenticationActivity).
+     */
+    private fun isPinConfigured(): Boolean {
+        return getSharedPreferences(
+            com.fintrack.pk.utils.Constants.PREFS_PIN,
+            Context.MODE_PRIVATE
+        ).contains(com.fintrack.pk.utils.Constants.KEY_ENCRYPTED_PIN)
+    }
+
     /**
      * Launch PIN authentication activity
      */
@@ -453,10 +471,13 @@ class MainActivity : AppCompatActivity() {
                 if (healthy) {
                     Logger.logInfo("MainActivity", "Server is healthy, loading interface")
                     updateLoadingText("Loading app...")
-                    
+
                     // Check OAuth status and show banner if not configured
                     checkOAuthStatus()
-                    
+
+                    // Hand the per-launch API capability token to the frontend
+                    webViewManager.setApiToken(com.fintrack.pk.utils.ApiTokenProvider.token)
+
                     // Task 7.3: Load WebView
                     webViewManager.loadApp()
                     
@@ -713,13 +734,20 @@ class MainActivity : AppCompatActivity() {
         if (pauseTimestamp > 0) {
             val timeInBackground = System.currentTimeMillis() - pauseTimestamp
             Logger.logInfo("MainActivity", "Time in background: ${timeInBackground}ms (${timeInBackground / 1000}s)")
-            
-            // Native PIN re-auth removed — web frontend handles authentication.
-            // After long background, the WebView will show the PIN screen automatically.
+
+            if (timeInBackground > PIN_REAUTH_THRESHOLD_MS && isPinConfigured()) {
+                Logger.logInfo("MainActivity", "Background threshold exceeded, requiring PIN re-authentication")
+                // pauseTimestamp is reset in onActivityResult on success
+                requirePinAuthentication()
+            }
         }
         
+<<<<<<< HEAD
         // Refresh the OAuth token if needed (AppAuth flow saves tokens directly
         // via OAuthCallbackActivity; there is no server-side exchange to complete)
+=======
+        // Refresh the Gmail OAuth token if it is close to expiry
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
         scope.launch {
             checkAndRefreshToken()
         }
@@ -1109,6 +1137,10 @@ class MainActivity : AppCompatActivity() {
      * AppAuth performs the code exchange with PKCE; the redirect returns via
      * OAuthCallbackActivity on the reversed-client-ID scheme.
      */
+<<<<<<< HEAD
+=======
+
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
     fun initiateOAuthFlow() {
         scope.launch {
             try {
@@ -1126,12 +1158,21 @@ class MainActivity : AppCompatActivity() {
                     android.net.Uri.parse(com.fintrack.pk.utils.Constants.OAUTH_TOKEN_URI)
                 )
 
+<<<<<<< HEAD
+=======
+                // Build AuthorizationRequest with explicit PKCE (S256).
+                // The Builder also generates a random state; both are
+                // persisted below so OAuthCallbackActivity can verify the
+                // redirect belongs to this request before exchanging it.
+                val codeVerifier = net.openid.appauth.CodeVerifierUtil.generateRandomCodeVerifier()
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
                 val authRequest = net.openid.appauth.AuthorizationRequest.Builder(
                     serviceConfig,
                     clientId,
                     net.openid.appauth.ResponseTypeValues.CODE,
                     android.net.Uri.parse(com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI)
                 )
+<<<<<<< HEAD
                     .setScope(com.fintrack.pk.utils.Constants.OAUTH_SCOPE)
                     // Required to receive a refresh_token; without this Google
                     // only issues a 1-hour access token on repeat consents.
@@ -1168,6 +1209,35 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT
                 }
+=======
+                    .setScope("https://www.googleapis.com/auth/gmail.readonly")
+                    .setCodeVerifier(codeVerifier)
+                    // prompt=select_account lets the user deliberately choose
+                    // (or switch) the Google account on every connect; consent
+                    // + access_type=offline guarantee a refresh token is issued
+                    // so the account can be re-authorized after switching.
+                    .setPromptValues(
+                        net.openid.appauth.AuthorizationRequest.Prompt.SELECT_ACCOUNT,
+                        net.openid.appauth.AuthorizationRequest.Prompt.CONSENT
+                    )
+                    .setAdditionalParameters(mapOf("access_type" to "offline"))
+                    .build()
+
+                Logger.logInfo("MainActivity", "Authorization request built (PKCE S256 + state, select_account)")
+                Logger.logInfo("MainActivity", "Redirect URI: ${com.fintrack.pk.utils.Constants.OAUTH_REDIRECT_URI}")
+                Logger.logInfo("MainActivity", "Scope: https://www.googleapis.com/auth/gmail.readonly")
+
+                // Persist the pending request (state + PKCE verifier) in
+                // Keystore-backed encrypted storage for callback validation
+                com.fintrack.pk.utils.GmailTokenBroker.savePendingAuthRequest(
+                    this@MainActivity,
+                    authRequest.jsonSerializeString()
+                )
+
+                // Launch auth flow using Custom Chrome Tab
+                val authService = net.openid.appauth.AuthorizationService(this@MainActivity)
+                val authIntent = authService.getAuthorizationRequestIntent(authRequest)
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 
                 Logger.logInfo("MainActivity", "Launching Custom Chrome Tab for OAuth")
                 authService.performAuthorizationRequest(
@@ -1230,6 +1300,10 @@ class MainActivity : AppCompatActivity() {
                         ).show()
                     }
 
+<<<<<<< HEAD
+=======
+                    // Launch the native AppAuth authorization flow
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
                     initiateOAuthFlow()
                     return@launch
                 }
@@ -1254,6 +1328,10 @@ class MainActivity : AppCompatActivity() {
                         // Clear invalid token
                         oauthTokenManager.deleteToken()
 
+<<<<<<< HEAD
+=======
+                        // Launch the native AppAuth authorization flow
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
                         initiateOAuthFlow()
                         return@launch
                     }

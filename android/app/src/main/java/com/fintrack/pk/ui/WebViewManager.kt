@@ -74,6 +74,11 @@ class WebViewManager(
     private var loadingCallback: LoadingCallback? = null
     private var refreshCallback: RefreshCallback? = null
     private var syncCallback: SyncCallback? = null
+
+    // Per-launch API capability token handed to the frontend via the JS
+    // bridge; the frontend sends it as X-API-Token on every API request.
+    @Volatile
+    private var apiToken: String = ""
     
     // Keyboard visibility tracking
     private var isKeyboardVisible = false
@@ -105,16 +110,28 @@ class WebViewManager(
     
     /**
      * Set the sync callback for handling sync operations from WebView.
-     * 
+     *
      * Task 10.2 Implementation:
      * - Register callback for sync requests from JavaScript
      * - Log registration for diagnostics
-     * 
+     *
      * Requirements: 6.1, 6.2, 11.1
      */
     fun setSyncCallback(callback: SyncCallback) {
         this.syncCallback = callback
         Logger.logInfo(COMPONENT_NAME, "Sync callback registered")
+    }
+
+    /**
+     * Provide the per-launch API capability token that the frontend must
+     * send as the X-API-Token header. Must be set before [loadApp].
+     * Only content served from the local loopback server can reach the JS
+     * bridge (external URLs open in the system browser), so the token is
+     * not exposed to third-party pages.
+     */
+    fun setApiToken(token: String) {
+        this.apiToken = token
+        Logger.logInfo(COMPONENT_NAME, "API token configured for JS bridge")
     }
     
     /**
@@ -923,13 +940,18 @@ class WebViewManager(
                     Logger.logInfo(COMPONENT_NAME, "Sync requested from JavaScript")
                     syncCallback?.onSyncRequested()
                 }
+
+                @android.webkit.JavascriptInterface
+                fun getApiToken(): String {
+                    return this@WebViewManager.apiToken
+                }
             }
-            
+
             // Add JavaScript interface to WebView
             webView.addJavascriptInterface(jsBridge, "AndroidBridge")
-            
+
             Logger.logInfo(COMPONENT_NAME, "JavaScript bridge configured successfully")
-            Logger.logInfo(COMPONENT_NAME, "JavaScript can call: AndroidBridge.requestSync()")
+            Logger.logInfo(COMPONENT_NAME, "JavaScript can call: AndroidBridge.requestSync(), AndroidBridge.getApiToken()")
             
         } catch (e: Exception) {
             Logger.logError(COMPONENT_NAME, "Failed to set up JavaScript bridge", e)

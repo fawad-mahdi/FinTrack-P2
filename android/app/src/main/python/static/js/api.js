@@ -32,9 +32,27 @@ export class ApiError extends Error {
   }
 }
 
+// Per-launch API capability token supplied by the native layer through the
+// JavaScript bridge. Every /api/* request must carry it as X-API-Token.
+function apiToken() {
+  try {
+    if (typeof AndroidBridge !== 'undefined' && AndroidBridge.getApiToken) {
+      return AndroidBridge.getApiToken() || '';
+    }
+  } catch { /* bridge unavailable */ }
+  return '';
+}
+
 async function request(path, options = {}) {
+<<<<<<< HEAD
   const headers = { ...(options.headers || {}) };
   if (API_TOKEN) headers['X-FinTrack-Token'] = API_TOKEN;
+=======
+  options = {
+    ...options,
+    headers: { 'X-API-Token': apiToken(), ...(options.headers || {}) },
+  };
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
   let res;
   try {
     res = await fetch(BASE + path, { ...options, headers });
@@ -58,10 +76,13 @@ function json(method, path, body, extraOptions = {}) {
   });
 }
 
+<<<<<<< HEAD
 // ── Auth ──────────────────────────────────────────────────
 export const authenticate     = (pin)          => json('POST', '/api/auth', { pin });
 export const startGmailAuth   = ()             => json('POST', '/api/auth/gmail');
 
+=======
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 // ── Sync ──────────────────────────────────────────────────
 export const syncGmail = (dateFrom, dateTo) => {
   const controller = new AbortController();

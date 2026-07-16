@@ -11,11 +11,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import com.fintrack.pk.BuildConfig
 import com.fintrack.pk.R
 import com.fintrack.pk.utils.Logger
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -204,26 +206,21 @@ class SettingsActivity : AppCompatActivity() {
             .setPositiveButton(getString(R.string.gmail_disconnect_confirm)) { _, _ ->
                 Logger.logInfo("SettingsActivity", "User confirmed Gmail disconnect")
 
-                // Delete token using OAuthTokenManager
-                val deleted = oauthTokenManager.deleteToken()
+                // Revoke the Google grant and clear all local OAuth state.
+                // The revocation is a network call, so run it off the main
+                // thread; local state is always cleared regardless.
+                lifecycleScope.launch {
+                    oauthTokenManager.disconnect()
 
-                if (deleted) {
-                    Logger.logInfo("SettingsActivity", "Gmail disconnected successfully")
+                    Logger.logInfo("SettingsActivity", "Gmail disconnected (grant revoked + local state cleared)")
                     android.widget.Toast.makeText(
-                        this,
+                        this@SettingsActivity,
                         getString(R.string.gmail_disconnect_success),
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
 
                     // Update UI
                     updateGmailStatus(false)
-                } else {
-                    Logger.logError("SettingsActivity", "Failed to disconnect Gmail")
-                    android.widget.Toast.makeText(
-                        this,
-                        getString(R.string.gmail_disconnect_failed),
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
                 }
             }
             .setNegativeButton(getString(R.string.cancel)) { dialog, _ ->

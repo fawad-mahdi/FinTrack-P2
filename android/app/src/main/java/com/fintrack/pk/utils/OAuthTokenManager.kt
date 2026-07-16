@@ -5,33 +5,21 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import net.openid.appauth.AuthorizationService
-import net.openid.appauth.AuthorizationServiceConfiguration
-import net.openid.appauth.TokenRequest
 import java.io.File
 import java.time.Instant
-import java.time.format.DateTimeParseException
-import java.util.concurrent.CountDownLatch
 
 /**
  * Utility class for managing OAuth tokens for Gmail API access.
- * 
- * This class handles:
- * - Token validation and expiry checking
- * - Token refresh using AppAuth's TokenRequest
- * - Token storage in Python backend compatible format
- * 
- * Task 9.3 Implementation:
- * - Check token expiry before sync operations
- * - Refresh tokens if expired using AppAuth
- * - Store tokens in format compatible with Python's google-auth library
- * 
- * Requirements: 6.2, 6.4
+ *
+ * All token material lives in Keystore-backed encrypted storage owned by
+ * [GmailTokenBroker]; this class is a thin facade used by the UI layer.
+ * No refresh token or client secret is ever written to plaintext files.
  */
 class OAuthTokenManager(private val context: Context) {
 
     private val gson = Gson()
     private val configDir = File(context.filesDir, Constants.CONFIG_DIR)
+<<<<<<< HEAD
     private val tokenFile = File(configDir, Constants.TOKEN_FILE)
 
     /**
@@ -70,53 +58,35 @@ class OAuthTokenManager(private val context: Context) {
             Logger.logError("OAuthTokenManager", "Error checking token existence: ${e.message}")
             false
         }
+=======
+    private val credentialsFile = File(configDir, Constants.CREDENTIALS_FILE)
+
+    /**
+     * Check if an OAuth token exists in the encrypted store.
+     */
+    fun hasToken(): Boolean {
+        val hasToken = GmailTokenBroker.hasToken(context)
+        Logger.logInfo("OAuthTokenManager", "Token exists: $hasToken")
+        return hasToken
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
     }
 
     /**
-     * Check if the current token is expired.
-     * 
-     * @return true if token is expired or expiry cannot be determined, false if valid
+     * Check if the current access token is expired (with a safety buffer).
      */
     fun isTokenExpired(): Boolean {
-        return try {
-            val tokenData = loadTokenData() ?: run {
-                Logger.logInfo("OAuthTokenManager", "No token data found, considering expired")
-                return true
-            }
-            
-            // Parse expiry timestamp (ISO 8601 format)
-            val expiryInstant = try {
-                Instant.parse(tokenData.expiry)
-            } catch (e: DateTimeParseException) {
-                Logger.logError("OAuthTokenManager", "Failed to parse expiry timestamp: ${tokenData.expiry}")
-                return true // Consider expired if we can't parse
-            }
-            
-            // Add a 5-minute buffer to refresh before actual expiry
-            val bufferSeconds = 300L
-            val now = Instant.now()
-            val isExpired = now.plusSeconds(bufferSeconds).isAfter(expiryInstant)
-            
-            Logger.logInfo("OAuthTokenManager", "Token expiry: ${tokenData.expiry}")
-            Logger.logInfo("OAuthTokenManager", "Current time: $now")
-            Logger.logInfo("OAuthTokenManager", "Token expired: $isExpired")
-            
-            isExpired
-        } catch (e: Exception) {
-            Logger.logError("OAuthTokenManager", "Error checking token expiry: ${e.message}")
-            true // Consider expired on error
-        }
+        val isExpired = GmailTokenBroker.isTokenExpired(context)
+        Logger.logInfo("OAuthTokenManager", "Token expired: $isExpired")
+        return isExpired
     }
 
     /**
-     * Refresh the OAuth token using the refresh token.
-     * 
-     * This method uses AppAuth's TokenRequest to refresh the access token
-     * and updates token.json with the new token data.
-     * 
+     * Refresh the OAuth access token using the stored refresh token.
+     *
      * @return true if refresh was successful, false otherwise
      */
     suspend fun refreshToken(): Boolean = withContext(Dispatchers.IO) {
+<<<<<<< HEAD
         try {
             Logger.logInfo("OAuthTokenManager", "Starting token refresh")
             
@@ -229,12 +199,16 @@ class OAuthTokenManager(private val context: Context) {
         }
         
         return result
+=======
+        Logger.logInfo("OAuthTokenManager", "Starting token refresh")
+        GmailTokenBroker.refreshAccessToken(context)
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
     }
 
     /**
      * Ensure token is valid before sync operations.
      * Checks expiry and refreshes if needed.
-     * 
+     *
      * @return true if token is valid or was successfully refreshed, false otherwise
      */
     suspend fun ensureValidToken(): Boolean {
@@ -243,12 +217,12 @@ class OAuthTokenManager(private val context: Context) {
                 Logger.logInfo("OAuthTokenManager", "No token available")
                 return false
             }
-            
+
             if (isTokenExpired()) {
                 Logger.logInfo("OAuthTokenManager", "Token expired, attempting refresh")
                 return refreshToken()
             }
-            
+
             Logger.logInfo("OAuthTokenManager", "Token is valid")
             true
         } catch (e: Exception) {
@@ -258,6 +232,7 @@ class OAuthTokenManager(private val context: Context) {
     }
 
     /**
+<<<<<<< HEAD
      * Load token data from token.json.
      * 
      * @return TokenData if successful, null otherwise
@@ -272,11 +247,30 @@ class OAuthTokenManager(private val context: Context) {
             gson.fromJson(json, TokenData::class.java)
         } catch (e: Exception) {
             Logger.logError("OAuthTokenManager", "Failed to load token data: ${e.message}")
+=======
+     * Load OAuth client credentials from credentials.json.
+     *
+     * @return OAuthCredentials if successful, null otherwise
+     */
+    fun loadCredentials(): OAuthCredentials? {
+        return try {
+            if (!credentialsFile.exists()) {
+                Logger.logError("OAuthTokenManager", "credentials.json not found")
+                return null
+            }
+
+            val json = credentialsFile.readText()
+            val wrapper = gson.fromJson(json, CredentialsWrapper::class.java)
+            wrapper.installed
+        } catch (e: Exception) {
+            Logger.logError("OAuthTokenManager", "Failed to load credentials: ${e.message}")
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
             null
         }
     }
 
     /**
+<<<<<<< HEAD
      * Save token data to token.json in Python backend compatible format.
      * 
      * @param tokenData TokenData to save
@@ -303,17 +297,19 @@ class OAuthTokenManager(private val context: Context) {
      * Delete token.json (for disconnect/logout).
      * 
      * @return true if successful or file doesn't exist, false on error
+=======
+     * Delete all locally stored OAuth tokens without revoking the grant.
+     * Used on refresh-failure paths where the grant is already invalid
+     * upstream; for a user-initiated disconnect use [disconnect].
+     *
+     * @return true if successful
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
      */
     fun deleteToken(): Boolean {
         return try {
-            if (tokenFile.exists()) {
-                val deleted = tokenFile.delete()
-                Logger.logInfo("OAuthTokenManager", "Token file deleted: $deleted")
-                deleted
-            } else {
-                Logger.logInfo("OAuthTokenManager", "Token file does not exist, nothing to delete")
-                true
-            }
+            GmailTokenBroker.clearTokens(context)
+            Logger.logInfo("OAuthTokenManager", "Stored tokens cleared")
+            true
         } catch (e: Exception) {
             Logger.logError("OAuthTokenManager", "Failed to delete token: ${e.message}")
             false
@@ -321,6 +317,7 @@ class OAuthTokenManager(private val context: Context) {
     }
 
     /**
+<<<<<<< HEAD
      * Save tokens from initial OAuth authorization flow.
      *
      * This method is used by OAuthCallbackActivity to save tokens after
@@ -329,11 +326,30 @@ class OAuthTokenManager(private val context: Context) {
      * the token.json shape the Python backend expects.
      *
      * @param tokenResponse TokenResponse from AppAuth
+=======
+     * Full disconnect for user-initiated "Disconnect Gmail": revokes the
+     * grant at Google, then clears all local OAuth state (tokens and any
+     * pending authorization request). Runs the network call off the main
+     * thread.
+     *
+     * @return true (local state is always cleared)
+     */
+    suspend fun disconnect(): Boolean = withContext(Dispatchers.IO) {
+        Logger.logInfo("OAuthTokenManager", "Disconnecting Gmail (revoke + local clear)")
+        GmailTokenBroker.revokeAndClear(context)
+    }
+
+    /**
+     * Save tokens from the initial OAuth authorization flow into the
+     * encrypted token store.
+     *
+     * @param tokenResponse TokenResponse from AppAuth
+     * @param credentials OAuthCredentials for the token endpoint URI
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
      * @return true if successful, false otherwise
      */
     fun saveInitialTokens(tokenResponse: net.openid.appauth.TokenResponse): Boolean {
         return try {
-            // Calculate expiry timestamp in ISO 8601 format
             val expiryTime = if (tokenResponse.accessTokenExpirationTime != null) {
                 Instant.ofEpochMilli(tokenResponse.accessTokenExpirationTime!!).toString()
             } else {
@@ -341,6 +357,7 @@ class OAuthTokenManager(private val context: Context) {
                 Instant.now().plusSeconds(3600).toString()
             }
 
+<<<<<<< HEAD
             // Create token data in Python backend format
             val tokenData = TokenData(
                 token = tokenResponse.accessToken ?: "",
@@ -361,6 +378,19 @@ class OAuthTokenManager(private val context: Context) {
             }
 
             saved
+=======
+            GmailTokenBroker.saveTokens(
+                context,
+                accessToken = tokenResponse.accessToken ?: "",
+                refreshToken = tokenResponse.refreshToken ?: "",
+                expiryIso = expiryTime,
+                tokenUri = credentials.tokenUri
+            )
+
+            Logger.logInfo("OAuthTokenManager", "Initial tokens saved successfully")
+            Logger.logInfo("OAuthTokenManager", "Token expiry: $expiryTime")
+            true
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
         } catch (e: Exception) {
             Logger.logError("OAuthTokenManager", "Failed to save initial tokens: ${e.message}")
             false
@@ -368,6 +398,7 @@ class OAuthTokenManager(private val context: Context) {
     }
 
     /**
+<<<<<<< HEAD
      * Data class for token.json format (Python backend compatible).
      *
      * Format matches what google-auth library expects:
@@ -393,5 +424,34 @@ class OAuthTokenManager(private val context: Context) {
         val clientSecret: String = "",
         val scopes: List<String>,
         val expiry: String
+=======
+     * Data classes for parsing credentials.json
+     */
+    data class CredentialsWrapper(
+        val installed: OAuthCredentials
+    )
+
+    data class OAuthCredentials(
+        @SerializedName("client_id")
+        val clientId: String,
+
+        @SerializedName("project_id")
+        val projectId: String,
+
+        @SerializedName("auth_uri")
+        val authUri: String,
+
+        @SerializedName("token_uri")
+        val tokenUri: String,
+
+        @SerializedName("auth_provider_x509_cert_url")
+        val authProviderCertUrl: String,
+
+        @SerializedName("client_secret")
+        val clientSecret: String,
+
+        @SerializedName("redirect_uris")
+        val redirectUris: List<String>
+>>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
     )
 }
