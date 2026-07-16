@@ -42,7 +42,6 @@ object Constants {
     const val KEY_PYTHON_EXTRACTED = "python_extracted"
     const val KEY_LAST_BACKGROUND_TIME = "last_background_time"
 
-<<<<<<< HEAD
     // OAuth (Android-type Google client: no client secret ships with the app)
     const val OAUTH_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
     const val OAUTH_TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -63,14 +62,6 @@ object Constants {
                 "com.fintrack.pk"
             return "$scheme:/oauth2callback"
         }
-=======
-    // OAuth — the redirect scheme is variant-aware (dev builds use their own
-    // scheme) and must stay in sync with the appAuthRedirectScheme Gradle
-    // placeholder consumed by the manifest callback filter.
-    val OAUTH_REDIRECT_SCHEME: String = com.fintrack.pk.BuildConfig.OAUTH_REDIRECT_SCHEME
-    const val OAUTH_REDIRECT_HOST = "oauth2callback"
-    val OAUTH_REDIRECT_URI: String = "$OAUTH_REDIRECT_SCHEME://$OAUTH_REDIRECT_HOST"
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 
     // Network
     const val NETWORK_TIMEOUT_SECONDS = 30L

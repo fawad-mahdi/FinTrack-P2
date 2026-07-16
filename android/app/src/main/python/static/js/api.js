@@ -4,26 +4,6 @@
 
 const BASE = '';
 
-// On Android the native shell loads the app as /?boot=<token>; the token
-// must be echoed back as X-FinTrack-Token on every API call (the local
-// server rejects /api/* requests without it). On desktop there is no
-// token and no header is sent.
-const API_TOKEN = (() => {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const boot = params.get('boot');
-    if (boot) {
-      sessionStorage.setItem('fintrack_api_token', boot);
-      params.delete('boot');
-      const qs = params.toString();
-      history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
-    }
-    return sessionStorage.getItem('fintrack_api_token') || '';
-  } catch {
-    return '';
-  }
-})();
-
 export class ApiError extends Error {
   constructor(status, detail) {
     super(detail);
@@ -44,15 +24,7 @@ function apiToken() {
 }
 
 async function request(path, options = {}) {
-<<<<<<< HEAD
-  const headers = { ...(options.headers || {}) };
-  if (API_TOKEN) headers['X-FinTrack-Token'] = API_TOKEN;
-=======
-  options = {
-    ...options,
-    headers: { 'X-API-Token': apiToken(), ...(options.headers || {}) },
-  };
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
+  const headers = { 'X-API-Token': apiToken(), ...(options.headers || {}) };
   let res;
   try {
     res = await fetch(BASE + path, { ...options, headers });
@@ -76,13 +48,10 @@ function json(method, path, body, extraOptions = {}) {
   });
 }
 
-<<<<<<< HEAD
 // ── Auth ──────────────────────────────────────────────────
 export const authenticate     = (pin)          => json('POST', '/api/auth', { pin });
 export const startGmailAuth   = ()             => json('POST', '/api/auth/gmail');
 
-=======
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 // ── Sync ──────────────────────────────────────────────────
 export const syncGmail = (dateFrom, dateTo) => {
   const controller = new AbortController();

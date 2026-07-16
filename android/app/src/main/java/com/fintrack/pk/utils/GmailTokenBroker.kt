@@ -230,17 +230,16 @@ object GmailTokenBroker {
                 Logger.logError(COMPONENT_NAME, "No refresh token available")
                 return false
             }
-            val credentials = loadClientCredentials(context)
-            if (credentials == null) {
-                Logger.logError(COMPONENT_NAME, "No client credentials available for refresh")
+            val clientId = Constants.OAUTH_CLIENT_ID
+            if (clientId.isEmpty()) {
+                Logger.logError(COMPONENT_NAME, "OAUTH_CLIENT_ID not configured for this build")
                 return false
             }
-            val (clientId, clientSecret) = credentials
             val tokenUri = p.getString(KEY_TOKEN_URI, DEFAULT_TOKEN_URI) ?: DEFAULT_TOKEN_URI
 
+            // Android-type OAuth client: no client secret ships with the app.
             val form = mapOf(
                 "client_id" to clientId,
-                "client_secret" to clientSecret,
                 "refresh_token" to refreshToken,
                 "grant_type" to "refresh_token"
             )
@@ -314,31 +313,6 @@ object GmailTokenBroker {
         }
     }
 
-    /**
-     * Load client_id/client_secret from config/credentials.json.
-     * The client document stays on disk (it identifies the app, not the
-     * user), but it is excluded from backups and never copied into the
-     * token store.
-     */
-    private fun loadClientCredentials(context: Context): Pair<String, String>? {
-        return try {
-            val credentialsFile = File(
-                File(context.filesDir, Constants.CONFIG_DIR),
-                Constants.CREDENTIALS_FILE
-            )
-            if (!credentialsFile.exists()) {
-                return null
-            }
-            val root = JsonParser.parseString(credentialsFile.readText()).asJsonObject
-            val installed = root.getAsJsonObject("installed") ?: root.getAsJsonObject("web") ?: return null
-            val clientId = installed.get("client_id")?.asString ?: return null
-            val clientSecret = installed.get("client_secret")?.asString ?: ""
-            Pair(clientId, clientSecret)
-        } catch (e: Exception) {
-            Logger.logError(COMPONENT_NAME, "Failed to load client credentials: ${e.message}")
-            null
-        }
-    }
 
     /**
      * POST a form to [urlString], routing through the active network so DNS

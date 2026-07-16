@@ -135,7 +135,7 @@ Environment variables set by `ServerProcessManager` before launching `server.py`
 Python and JS files exist in two copies: repo root (desktop, Python 3.12) and `android/app/src/main/python/` (Android, Python 3.9). Rules:
 
 - **Byte-identical (edit root copy, then `cp` to Android)**: `parsers.py`, `merchants.py`, `bank_registry.py`, `generic_parser.py`, `static/js/views/sync.js`, `static/js/views/activity.js`, `static/js/api.js`. Enforced by `tests/test_copies_in_sync.py`.
-- **Intentionally divergent (port changes by hand)**: `server.py`, `database.py`, `auth_gmail.py`, `static/js/views/dashboard.js`. The Android `database.py`/`dashboard.js` are a matched pair with different monthly-report payload keys — do not unify one without the other.
+- **Intentionally divergent (port changes by hand)**: `server.py`, `database.py`, `auth_gmail.py`, `static/js/views/dashboard.js`, `static/js/router.js`. The Android `database.py`/`dashboard.js` are a matched pair with different monthly-report payload keys — do not unify one without the other. `router.js` diverges because Android gates entry natively (Keystore PIN screen + per-launch capability token, see Android Architecture) before the WebView loads, while desktop still boots through the web-based PIN login (`auth.js`).
 
 ## Test Suites
 

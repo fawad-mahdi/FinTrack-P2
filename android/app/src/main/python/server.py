@@ -1,12 +1,8 @@
 import asyncio
-<<<<<<< HEAD
 import hashlib
-=======
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 import hmac
 import os
 import re
-import time
 from datetime import datetime, timedelta
 from datetime import date as date_type
 from functools import partial
@@ -37,25 +33,16 @@ from parsers import parse_email
 BASE_DIR = os.environ.get("FINTRACK_APP_DIR") or os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-<<<<<<< HEAD
 # The web frontend (index.html + static/) always ships alongside this file:
 # repo root on desktop, the Chaquopy module dir on Android. It is NOT extracted
 # into filesDir, so serve it from the module directory, not FINTRACK_APP_DIR.
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 PIN  = os.getenv("PIN",  "1234")
-=======
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 
 _MAX_SYNC_DAYS  = 90
-
-# Per-IP brute-force throttle for /api/auth.
-# Maps client IP → (failed_count, lockout_until_epoch).
-_failed_attempts: dict = {}
-_MAX_PIN_ATTEMPTS = 5
-_PIN_LOCKOUT_SEC  = 60
 
 
 # NOTE: FastAPI 0.88 (Android/Chaquopy pin) does not support the lifespan=
@@ -72,75 +59,19 @@ async def _startup():
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-# ─── LOCAL API TOKEN (Android) ───────────────────────────────────
-# On Android the server binds to 127.0.0.1, but any app on the device can
-# reach loopback ports. ServerProcessManager generates a per-process token
-# (FINTRACK_API_TOKEN) and hands it to the WebView via a one-time ?boot=
-# query param; api.js sends it back as X-FinTrack-Token on every API call.
-# On desktop the env var is unset and this middleware is a no-op.
-
-@app.middleware("http")
-async def require_api_token(request: Request, call_next):
-    api_token = os.environ.get("FINTRACK_API_TOKEN", "")
-    if api_token and request.url.path.startswith("/api/"):
-        supplied = request.headers.get("x-fintrack-token", "")
-        if not hmac.compare_digest(supplied, api_token):
-            return JSONResponse(status_code=401, content={"detail": "Missing or invalid API token"})
-    return await call_next(request)
-
-
-# ─── HEALTH CHECK ────────────────────────────────────────────────
-# ServerProcessManager polls this to decide the server is up. It must
-# stay un-prefixed (not /api/) so the token middleware never blocks it.
-
-@app.get("/health")
-async def health_check():
-    """Liveness probe for the Android ServerProcessManager."""
-    return {"status": "ok"}
-
-
 # ─── API AUTHORIZATION ───────────────────────────────────────────
 #
 # Every /api/* request must carry the per-launch capability token that the
 # native layer generates (ServerProcessManager injects FINTRACK_API_TOKEN
 # into this process; WebViewManager hands the same value to the frontend,
-# which sends it as the X-API-Token header). There is no PIN and no
-# process-global session state: a request either presents the current
-# launch's token or is rejected. Read the env var per request so a server
-# restart inside a long-lived process never compares against a stale copy.
+# which sends it as the X-API-Token header). There is no process-global
+# session state: a request either presents the current launch's token or
+# is rejected. Read the env var per request so a server restart inside a
+# long-lived process never compares against a stale copy.
 
-<<<<<<< HEAD
-@app.post("/api/auth")
-async def authenticate(request: Request):
-    ip = request.client.host if request.client else "unknown"
-    now = time.monotonic()
-
-    fails, locked_until = _failed_attempts.get(ip, (0, 0.0))
-    if now < locked_until:
-        wait = int(locked_until - now)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many attempts. Try again in {wait}s.",
-        )
-
-    body = await request.json()
-    submitted = str(body.get("pin") or "")
-    if _pin_matches(submitted):
-        _failed_attempts.pop(ip, None)
-        _authenticated.add("user")
-        return {"ok": True}
-
-    fails += 1
-    if fails >= _MAX_PIN_ATTEMPTS:
-        _failed_attempts[ip] = (0, now + _PIN_LOCKOUT_SEC)
-    else:
-        _failed_attempts[ip] = (fails, 0.0)
-    raise HTTPException(status_code=401, detail="Wrong PIN")
-=======
 def _expected_api_token():
     # type: () -> str
     return os.environ.get("FINTRACK_API_TOKEN", "")
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 
 
 @app.middleware("http")
@@ -173,7 +104,6 @@ def _pin_matches(submitted: str) -> bool:
 
 @app.get("/api/profile")
 async def get_profile():
-    check_auth()
     email = get_setting("gmail_email")
     if not email:
         loop = asyncio.get_running_loop()
@@ -188,7 +118,6 @@ async def get_profile():
 
 @app.put("/api/profile")
 async def update_profile(request: Request):
-    check_auth()
     body = await request.json()
     name = str(body.get("name") or "").strip()
     if not name or len(name) > 50:
@@ -199,7 +128,6 @@ async def update_profile(request: Request):
 
 @app.post("/api/profile/pin")
 async def change_pin(request: Request):
-    check_auth()
     body = await request.json()
     current = str(body.get("current_pin") or "")
     new = str(body.get("new_pin") or "")
@@ -519,7 +447,6 @@ _ADDRESS_SHAPE_RE = re.compile(r"^(?:[a-z0-9._%+-]+@)?[a-z0-9][a-z0-9.-]*\.[a-z]
 
 @app.get("/api/banks")
 async def list_banks():
-    check_auth()
     return {
         "builtin": BANK_REGISTRY,
         "custom": get_user_banks(),
@@ -528,7 +455,6 @@ async def list_banks():
 
 @app.post("/api/banks")
 async def add_bank(request: Request):
-    check_auth()
     body    = await request.json()
     bank    = str(body.get("bank") or "").strip()
     address = str(body.get("address") or "").strip().lower()
@@ -559,7 +485,6 @@ async def add_bank(request: Request):
 
 @app.delete("/api/banks/{bank_id}")
 async def remove_bank(bank_id: int):
-    check_auth()
     delete_user_bank(bank_id)
     return {"ok": True}
 

@@ -24,11 +24,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FinTrackPK"
-<<<<<<< HEAD
-        android:networkSecurityConfig="@xml/network_security_config"
-=======
         android:usesCleartextTraffic="false"
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
         tools:targetApi="31">
 
         <!-- Main Activity -->
@@ -63,7 +59,6 @@
             android:label="@string/debug_logs"
             android:parentActivityName=".ui.SettingsActivity" />
 
-<<<<<<< HEAD
         <!-- OAuth Callback Activity.
              NOT registered on the redirect scheme: AppAuth's
              RedirectUriReceiverActivity (declared by the appauth library on
@@ -78,32 +73,6 @@
             android:name=".ui.OAuthCallbackActivity"
             android:exported="false"
             android:launchMode="singleTask" />
-=======
-        <!-- OAuth Callback Activity. The scheme comes from the per-variant
-             appAuthRedirectScheme Gradle placeholder so dev and release
-             builds claim distinct callback identities. -->
-        <activity
-            android:name=".ui.OAuthCallbackActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="${appAuthRedirectScheme}"
-                    android:host="oauth2callback" />
-            </intent-filter>
-        </activity>
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
-
-        <!-- The AppAuth library registers its own receiver for the same
-             redirect scheme; remove it so OAuthCallbackActivity (which
-             enforces state binding + PKCE) is the single callback entry
-             point and no ambiguous-resolution chooser can appear. -->
-        <activity
-            android:name="net.openid.appauth.RedirectUriReceiverActivity"
-            tools:node="remove" />
 
         <!-- File Provider for sharing files -->
         <provider

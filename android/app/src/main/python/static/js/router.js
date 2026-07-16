@@ -86,25 +86,12 @@ function navigate(viewId) {
 
 document.getElementById('appShell').style.display = 'flex';
 
-<<<<<<< HEAD
-  // Mount the shared cash quick-add FAB once (visibility toggled per view)
-  quickAdd.mount();
+// Mount the shared cash quick-add FAB once (visibility toggled per view)
+quickAdd.mount();
 
-  // Wire up bottom nav buttons
-  document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view));
-  });
-
-  // Handle browser back/forward
-  window.addEventListener('hashchange', () => navigate(getViewId()));
-
-  // Navigate to initial view
-  navigate(getViewId());
-=======
 // Wire up bottom nav buttons
 document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
   btn.addEventListener('click', () => navigate(btn.dataset.view));
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 });
 
 // Handle browser back/forward

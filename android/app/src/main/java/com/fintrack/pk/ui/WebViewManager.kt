@@ -699,11 +699,7 @@ class WebViewManager(
      * Requirements: 4.2
      */
     fun loadApp(
-        // ?boot= hands the per-process API token to the frontend; api.js
-        // stores it in sessionStorage, strips it from the URL, and attaches
-        // it as X-FinTrack-Token on every /api/* request.
-        serverUrl: String = "http://${Constants.SERVER_HOST}:${Constants.SERVER_PORT}/?boot=" +
-            com.fintrack.pk.server.ServerProcessManager.apiToken
+        serverUrl: String = "http://${Constants.SERVER_HOST}:${Constants.SERVER_PORT}/"
     ) {
         Logger.logInfo(COMPONENT_NAME, "Loading app from: $serverUrl")
         

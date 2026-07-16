@@ -40,17 +40,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-<<<<<<< HEAD
         // AppAuth redirect scheme for OAuth (overridden per build type below)
         manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk"
         buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
-=======
-        // AppAuth redirect scheme for OAuth. The manifest callback filter and
-        // Constants.OAUTH_REDIRECT_URI both derive from these, so the scheme
-        // stays consistent per variant (see the dev build type override).
-        manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk"
-        buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"com.fintrack.pk\"")
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
 
         ndk {
             // Chaquopy supports these ABIs
@@ -92,13 +84,8 @@ android {
             isDebuggable = true
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-<<<<<<< HEAD
             buildConfigField("String", "OAUTH_CLIENT_ID", "\"$oauthClientIdDebug\"")
             manifestPlaceholders["appAuthRedirectScheme"] = oauthRedirectScheme(oauthClientIdDebug)
-=======
-            manifestPlaceholders["appAuthRedirectScheme"] = "com.fintrack.pk.dev"
-            buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"com.fintrack.pk.dev\"")
->>>>>>> cf5955ab49e83f742b37cfff8091bf38565c16bf
             resValue("string", "app_name", "FinTrack Dev")
         }
     }

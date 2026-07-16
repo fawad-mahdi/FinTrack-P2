@@ -3,8 +3,11 @@ Guards the desktop <-> Android mirroring rules.
 
 Repo-root Python/JS files and android/app/src/main/python/ copies must
 stay byte-identical for the MIRRORED set below. server.py, database.py,
-auth_gmail.py and dashboard.js are intentionally divergent (documented
-in CLAUDE.md) and are NOT compared.
+auth_gmail.py, dashboard.js and router.js are intentionally divergent
+(documented in CLAUDE.md) and are NOT compared. router.js diverges because
+Android gates entry natively (Keystore PIN screen + per-launch capability
+token) before the WebView loads, while desktop still boots through the
+web-based PIN login (auth.js).
 
 Also gates all Android-side Python (and the mirrored root files) on
 Python 3.9 syntax so a desktop-only construct can't crash Chaquopy.
@@ -28,7 +31,6 @@ MIRRORED_FILES = [
     "static/js/views/activity.js",
     "static/js/views/profile.js",
     "static/js/api.js",
-    "static/js/router.js",
     "static/js/components/quickAdd.js",
 ]
 

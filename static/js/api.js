@@ -4,26 +4,6 @@
 
 const BASE = '';
 
-// On Android the native shell loads the app as /?boot=<token>; the token
-// must be echoed back as X-FinTrack-Token on every API call (the local
-// server rejects /api/* requests without it). On desktop there is no
-// token and no header is sent.
-const API_TOKEN = (() => {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const boot = params.get('boot');
-    if (boot) {
-      sessionStorage.setItem('fintrack_api_token', boot);
-      params.delete('boot');
-      const qs = params.toString();
-      history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
-    }
-    return sessionStorage.getItem('fintrack_api_token') || '';
-  } catch {
-    return '';
-  }
-})();
-
 export class ApiError extends Error {
   constructor(status, detail) {
     super(detail);
@@ -32,9 +12,19 @@ export class ApiError extends Error {
   }
 }
 
+// Per-launch API capability token supplied by the native layer through the
+// JavaScript bridge. Every /api/* request must carry it as X-API-Token.
+function apiToken() {
+  try {
+    if (typeof AndroidBridge !== 'undefined' && AndroidBridge.getApiToken) {
+      return AndroidBridge.getApiToken() || '';
+    }
+  } catch { /* bridge unavailable */ }
+  return '';
+}
+
 async function request(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (API_TOKEN) headers['X-FinTrack-Token'] = API_TOKEN;
+  const headers = { 'X-API-Token': apiToken(), ...(options.headers || {}) };
   let res;
   try {
     res = await fetch(BASE + path, { ...options, headers });

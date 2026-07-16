@@ -8,7 +8,7 @@ import java.security.SecureRandom
  * The token is generated once per app process from SecureRandom (256 bits)
  * and handed to exactly two parties:
  *  - the Python server process via the FINTRACK_API_TOKEN environment value
- *    (ServerProcessManager), which requires it on every /api/* request
+ *    (ServerProcessManager), which requires it on every request under /api/
  *  - the WebView frontend via the JavaScript bridge (WebViewManager), which
  *    attaches it as the X-API-Token header
  *
